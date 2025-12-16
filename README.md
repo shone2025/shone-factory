@@ -17,43 +17,42 @@ chmod +x mac-start.sh
 
 ### 或直接运行
 ```bash
-python3 shone_client.py
+python3 shone_client_web.py
 ```
 
 ## 使用方法
 
-1. 获取 Token（扫码购买或联系作者）
-2. 粘贴 Key 到输入框
+1. 获取 SF-Key（联系作者）
+2. 粘贴 SF-Key 到输入框
 3. 点击「➕ 点击添加」
 4. 首次添加自动完成配置
 
-## 粘贴格式
+## SF-Key 格式
 
-**JSON 格式（推荐）**
-```json
-{
-  "access_token": "eyJhbGci...",
-  "refresh_token": "Z0nEZgA..."
-}
+```
+SF-01xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SF-02xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SF-00xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-**两行格式**
-```
-eyJhbGci...（第一行：access_token）
-Z0nEZgA...（第二行：refresh_token）
-```
+每行以 `SF-` 开头，支持多行粘贴。
 
 ## 环境要求
 
 - Python 3.8+
 - Factory (droid) 已安装
 
-## 购买与联系
+## 致谢
 
-| 项目 | 信息 |
-|------|------|
-| 📧 联系作者 | haooicq@gmail.com |
-| 🔗 获取Token | https://pay.ldxp.cn/shop/D4P96006 |
+| 角色 | 贡献者 |
+|------|--------|
+| 前端程序员 | YO！ |
+| 后端程序员 | bingw |
+| 测试程序员 | 期待您的加入 |
+
+## 联系方式
+
+📧 haooicq@gmail.com
 
 ---
 
