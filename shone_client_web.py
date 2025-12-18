@@ -1534,6 +1534,25 @@ _H1='''<!DOCTYPE html>
             <div id="accountList"></div>
         </div>
     </div>
+    <div class="modal" id="renewModal">
+        <div class="modal-content" style="max-width: 420px;">
+            <h3 class="modal-title">🔄 全部续期</h3>
+            <div style="background: #1e1e2e; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 12px; color: #cdd6f4;">
+                <p style="margin-bottom: 8px;">• 智能续期：仅刷新已过期的账号</p>
+                <p style="margin-bottom: 0;">• 强制续期：刷新所有账号（包括有效的）</p>
+            </div>
+            <div style="background: #2d1f1f; border-radius: 8px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #f9e2af;">
+                <p style="margin-bottom: 5px;">⚠️ 续期后仍失效？可能原因：</p>
+                <p style="margin-bottom: 3px;">1. Key额度已耗尽</p>
+                <p style="margin-bottom: 0;">2. 服务器刷新失败 → 请使用「自主刷新」</p>
+            </div>
+            <div class="btn-row" style="gap: 8px;">
+                <button class="btn btn-success" onclick="doRenewTokens(false)">智能续期</button>
+                <button class="btn btn-warning" onclick="doRenewTokens(true)">强制续期</button>
+                <button class="btn btn-secondary" onclick="closeRenewModal()">关闭</button>
+            </div>
+        </div>
+    </div>
     <div class="modal" id="remarkModal">
         <div class="modal-content">
             <h3 class="modal-title">编辑备注</h3>
@@ -1800,32 +1819,24 @@ _H1='''<!DOCTYPE html>
             if (result.success) { showToast('额度查询完成', 'success'); loadAccounts(); }
             else { showToast(result.message || '查询失败', 'error'); }
         }
-        async function renewAllTokens() {
-            const choice = confirm('全部续期说明：\\n\\n• 默认仅续期剩余 < 6小时 或已过期的账号\\n• refresh_token 有效期约1个月\\n• 已使用过的 refresh_token 需重新登录\\n\\n点击「确定」执行智能续期\\n点击「取消」后可选择强制续期所有账号');
-            if (choice) {
-                // 智能续期
-                showToast('正在智能续期...', 'info');
-                const result = await api('renew_all_tokens', { force_all: false });
-                if (result.success) {
-                    showToast(result.message, 'success');
-                    loadAccounts();
-                    loadLoginStatus();
-                } else {
-                    showToast(result.message || '续期失败', 'error');
-                }
+        function renewAllTokens() {
+            document.getElementById('renewModal').classList.add('active');
+        }
+        function closeRenewModal() {
+            document.getElementById('renewModal').classList.remove('active');
+        }
+        async function doRenewTokens(forceAll) {
+            closeRenewModal();
+            const msg = forceAll ? '正在强制续期所有账号...' : '正在智能续期...';
+            showLoading(msg, 60000);
+            const result = await api('renew_all_tokens', { force_all: forceAll });
+            hideLoading();
+            if (result.success) {
+                showToast(result.message, 'success');
+                loadAccounts();
+                loadLoginStatus();
             } else {
-                // 询问是否强制续期
-                if (confirm('是否强制续期所有账号？\\n（包括还在有效期内的账号）')) {
-                    showToast('正在强制续期所有账号...', 'info');
-                    const result = await api('renew_all_tokens', { force_all: true });
-                    if (result.success) {
-                        showToast(result.message, 'success');
-                        loadAccounts();
-                        loadLoginStatus();
-                    } else {
-                        showToast(result.message || '续期失败', 'error');
-                    }
-                }
+                showToast(result.message || '续期失败', 'error');
             }
         }
         async function loadLoginStatus() {
