@@ -796,15 +796,19 @@ class _0xTM:
         return s._0xswa(best_idx+1)
 
     def _0xgex(s):
-        """获取已耗尽的账号列表"""
+        """获取已耗尽的账号列表
+        只返回使用率 >= 100% 的账号，避免误删查询失败的账号
+        """
         po=s._0xlp();exhausted=[]
         for i,a in enumerate(po['accounts'],1):
             cb=a.get('cached_balance',{})
-            rm=cb.get('remaining',0)
             ur=cb.get('usedRatio',0)
-            if rm<=0 or ur>=1.0:
+            # 只有使用率 >= 100% (1.0) 才视为耗尽
+            # 查询失败的账号 usedRatio 为 0，不会被误删
+            if ur>=1.0:
                 ki=a.get('key_id','')
-                exhausted.append({"index":i,"key_id":ki[:35]+'...'if len(ki)>35 else ki,"remaining":rm})
+                us_pct=f"{ur*100:.1f}%"
+                exhausted.append({"index":i,"key_id":ki[:35]+'...'if len(ki)>35 else ki,"usage":us_pct})
         return{"success":True,"accounts":exhausted,"count":len(exhausted)}
 
     def _0xdex(s,indices):
@@ -1616,7 +1620,7 @@ _H1='''<!DOCTYPE html>
     <div class="modal" id="exhaustedModal">
         <div class="modal-content" style="max-width: 500px;">
             <h3 class="modal-title">🗑️ 删除已耗尽账号</h3>
-            <p style="color: #6272a4; font-size: 12px; margin-bottom: 10px;">以下账号额度已耗尽，勾选后点击删除</p>
+            <p style="color: #6272a4; font-size: 12px; margin-bottom: 10px;">以下账号使用率 ≥ 100%，勾选后点击删除</p>
             <div class="exhausted-list" id="exhaustedList">加载中...</div>
             <div class="btn-row">
                 <button class="btn btn-danger" onclick="confirmDeleteExhausted()">确认删除</button>
@@ -2092,7 +2096,7 @@ _H1='''<!DOCTYPE html>
                     `<div class="exhausted-item">
                         <input type="checkbox" class="exhaust-check" data-index="${acc.index}" checked>
                         <span class="key-id">${acc.key_id}</span>
-                        <span style="margin-left: auto; color: #ff5555; font-size: 11px;">已耗尽</span>
+                        <span style="margin-left: auto; color: #ff5555; font-size: 11px;">${acc.usage || '已耗尽'}</span>
                     </div>`
                 ).join('');
             }
