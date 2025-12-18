@@ -643,6 +643,100 @@ class _0xTM:
             al.append({"index":i,"key_id":ki,"status":st,"status_text":stx,"remark":a.get('remark',''),"added_at":a.get('added_at','N/A')[:16],"is_current":ic,"balance_status":bs,"balance_text":btx,"remaining":rs,"usage_ratio":us,"cached":cached,"last_updated":lu})
         return al
 
+    def _0xsfc(s):
+        """智能从云端同步账号数据
+        逻辑：
+        1. 遍历账号池，检查每个账号状态
+        2. 状态为"待验证"(pending)或"待刷新"(refresh)的账号，从云端下载token
+        3. 状态为"有效"的账号，仅加载基本信息（邮箱等），不重复下载token
+        4. 逐个同步，返回同步结果
+        """
+        po=s._0xlp();nw=datetime.now().timestamp()
+        synced=0;failed=0;skipped=0;results=[]
+        
+        for i,a in enumerate(po['accounts']):
+            ki=a.get('key_id','')
+            sfkl1=a.get('sf_key_line1','')
+            ex=a.get('exp',0)
+            at=a.get(_S2,'')
+            rt=a.get(_S3,'')
+            
+            if not sfkl1 or len(sfkl1)<35:
+                skipped+=1
+                results.append({"key":ki[:20],"status":"skip","msg":"无SF-Key"})
+                continue
+            
+            sfkey_id=sfkl1[:35]
+            
+            # 判断状态
+            if ex==0:status='pending'  # 待验证（首次使用，无token信息）
+            elif ex>nw:status='valid'  # 有效
+            elif rt:status='refresh'   # 待刷新（过期但有refresh_token）
+            else:status='expired'      # 已过期
+            
+            # 状态有效且有token，跳过云端同步（节省资源）
+            if status=='valid' and at and rt:
+                skipped+=1
+                results.append({"key":ki[:20],"status":"skip","msg":"有效无需同步"})
+                continue
+            
+            # 需要从云端获取token的情况：pending 或 refresh 或 无token
+            try:
+                cd=_0xCQ(sfkey_id)
+                if cd and cd.get('access_token') and cd.get('refresh_token'):
+                    new_at=cd.get('access_token','')
+                    new_rt=cd.get('refresh_token','')
+                    new_exp=0
+                    # 解析新token的过期时间
+                    new_pl=s._0xdj(new_at)
+                    if new_pl:
+                        new_exp=new_pl.get('exp',0)
+                    
+                    # 更新本地账号池
+                    po['accounts'][i][_S2]=new_at
+                    po['accounts'][i][_S3]=new_rt
+                    po['accounts'][i]['exp']=new_exp
+                    po['accounts'][i]['last_cloud_sync']=nw
+                    
+                    # 同时获取邮箱等基本信息
+                    cred=_0xCQC(sfkey_id)
+                    if cred:
+                        if cred.get('email'):
+                            po['accounts'][i]['email']=cred.get('email')
+                        if cred.get('region'):
+                            po['accounts'][i]['region']=cred.get('region')
+                    
+                    synced+=1
+                    new_status='有效' if new_exp>nw else '待刷新'
+                    results.append({"key":ki[:20],"status":"success","msg":f"同步成功({new_status})"})
+                else:
+                    # 云端无数据，尝试获取凭据信息
+                    cred=_0xCQC(sfkey_id)
+                    if cred and cred.get('email'):
+                        po['accounts'][i]['email']=cred.get('email')
+                        if cred.get('region'):
+                            po['accounts'][i]['region']=cred.get('region')
+                        skipped+=1
+                        results.append({"key":ki[:20],"status":"skip","msg":"仅获取基本信息"})
+                    else:
+                        failed+=1
+                        results.append({"key":ki[:20],"status":"fail","msg":"云端无数据"})
+            except Exception as e:
+                failed+=1
+                results.append({"key":ki[:20],"status":"fail","msg":str(e)[:20]})
+        
+        # 保存更新后的账号池
+        s._0xsp(po)
+        
+        return{
+            "success":True,
+            "message":f"同步完成: 成功 {synced}, 失败 {failed}, 跳过 {skipped}",
+            "synced":synced,
+            "failed":failed,
+            "skipped":skipped,
+            "results":results
+        }
+
     def _0xswa(s,ix):
         _0xCHK()
         po=s._0xlp();idx=ix-1
@@ -1423,6 +1517,7 @@ _H1='''<!DOCTYPE html>
             <div class="card-title">账号池</div>
             <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <button class="btn btn-secondary" onclick="loadAccounts()">刷新列表</button>
+                <button class="btn btn-info" onclick="syncFromCloud()">☁️ 云端同步</button>
                 <button class="btn btn-primary" onclick="refreshAllBalances()">💰 刷新额度</button>
                 <button class="btn btn-success" onclick="renewAllTokens()">🔄 全部续期</button>
                 <div style="display: flex; align-items: center; gap: 5px; margin-left: 15px; padding: 5px 10px; background: #1e1e2e; border-radius: 6px;">
@@ -1647,6 +1742,7 @@ _H1='''<!DOCTYPE html>
                 showToast(result.message, 'error'); 
             }
         }
+        let isFirstLoad = true;  // 标记是否首次加载
         async function loadAccounts() {
             const result = await api('list');
             const container = document.getElementById('accountList');
@@ -1654,24 +1750,49 @@ _H1='''<!DOCTYPE html>
                 container.innerHTML = '<div class="empty-state">暂无账号，请添加 Key</div>';
                 return;
             }
+            
+            // 检查是否有需要同步的账号（状态为 pending 或 refresh）
+            const needSync = result.accounts.some(acc => acc.status === 'pending' || acc.status === 'refresh' || acc.balance_status === 'pending');
+            
+            // 首次加载且有需要同步的账号，自动触发云端同步
+            if (isFirstLoad && needSync) {
+                isFirstLoad = false;
+                showToast('检测到新账号，正在从云端同步数据...', 'info');
+                setTimeout(() => syncFromCloud(), 500);
+            }
+            
             let html = '<div class="table-wrapper"><table><thead><tr><th>#</th><th>Key 编号</th><th>状态</th><th>额度状态</th><th>剩余</th><th>使用率</th><th>备注</th><th>添加时间</th><th>操作</th></tr></thead><tbody>';
             for (const acc of result.accounts) {
                 const statusClass = 'status-' + acc.status;
-                const statusIcon = acc.is_current ? '🟢' : (acc.status === 'valid' ? '✅' : (acc.status === 'refresh' ? '🔄' : '❌'));
+                const statusIcon = acc.is_current ? '🟢' : (acc.status === 'valid' ? '✅' : (acc.status === 'refresh' ? '🔄' : (acc.status === 'pending' ? '⏳' : '❌')));
                 const balanceClass = 'balance-' + acc.balance_status;
                 const balanceIcon = (acc.status === 'refresh' && acc.balance_text === '-') ? '' : (acc.balance_status === 'good' ? '🟢' : acc.balance_status === 'medium' ? '🟡' : acc.balance_status === 'low' ? '🔴' : acc.balance_status === 'exhausted' ? '⚠️' : acc.balance_status === 'error' ? '❌' : '⏳');
                 const keyDisplay = acc.key_id.startsWith('SF-') && acc.key_id.length > 35 ? acc.key_id.substring(0, 35) + '...' : acc.key_id;
                 const cachedTip = acc.cached && acc.last_updated ? ` title="缓存数据，更新于: ${acc.last_updated}"` : '';
-                const statusTip = acc.status === 'refresh' ? ' title="服务端已进入节能模式，状态待刷新，额度用完前并不影响使用"' : '';
+                const statusTip = acc.status === 'refresh' ? ' title="Token已过期，点击☁️云端同步获取最新数据"' : (acc.status === 'pending' ? ' title="待验证状态，请点击☁️云端同步获取数据"' : '');
                 const balanceTip = acc.balance_status === 'error' ? ' title="注意：查询失败并不代表key失效，如果key额度高于20%请在几小时后重新查询，在额度使用完之前，此提示并不影响使用"' : cachedTip;
-                const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn-request-refresh" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">📨 申请刷新</button>` : '';
+                // 状态为 refresh 或 pending 时显示同步按钮
+                const syncBtn = (acc.status === 'refresh' || acc.status === 'pending') ? `<button class="btn-request-refresh" onclick="syncFromCloud()" title="从云端同步最新数据">☁️ 同步</button>` : '';
+                const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn-request-refresh" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">📨 申请</button>` : '';
                 const actionBtn = acc.is_current 
                     ? '<span class="btn btn-success action-btn" style="cursor:default;opacity:0.8;">已登录</span>' 
                     : `<button class="btn btn-success action-btn" onclick="switchAccount(${acc.index})">切换</button>`;
-                html += `<tr><td>${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${refreshRequestBtn}${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td>${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
+                html += `<tr><td>${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${syncBtn}${refreshRequestBtn}${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td>${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
             }
             html += '</tbody></table></div>';
             container.innerHTML = html;
+        }
+        async function syncFromCloud() {
+            showLoading('正在从云端同步账号数据...', 60000);
+            const result = await api('sync_from_cloud');
+            hideLoading();
+            if (result.success) {
+                showToast(result.message, 'success');
+                loadAccounts();
+                loadLoginStatus();
+            } else {
+                showToast(result.message || '同步失败', 'error');
+            }
         }
         async function refreshAllBalances() {
             showToast('正在查询所有账号额度...', 'info');
@@ -2010,6 +2131,7 @@ class _0xRH(BaseHTTPRequestHandler):
                 d=json.loads(bd);ac=d.get('action','')
                 if ac=='add':r=s._0m._0xat(d.get('content',''))
                 elif ac=='list':r={"accounts":s._0m._0xgal()}
+                elif ac=='sync_from_cloud':r=s._0m._0xsfc()
                 elif ac=='switch':r=s._0m._0xswa(d.get('index',0))
                 elif ac=='delete':r=s._0m._0xda(d.get('index',0))
                 elif ac=='remark':r=s._0m._0xur(d.get('index',0),d.get('remark',''))
