@@ -1,0 +1,82 @@
+#!/bin/bash
+# Mac factorykey - 启动脚本（带守护进程）
+
+# 获取 App 所在目录（即 shone-factory-release 目录）
+APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+PLIST_DIR="$HOME/Library/LaunchAgents"
+PLIST_FILE="$PLIST_DIR/com.factorykey.client.plist"
+PYTHON_SCRIPT="$APP_DIR/shone_client_web.py"
+LOG_FILE="/tmp/factorykey_client.log"
+
+# 确保 LaunchAgents 目录存在
+mkdir -p "$PLIST_DIR"
+
+# 创建/更新 LaunchAgent plist（支持相对路径）
+cat > "$PLIST_FILE" << PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.factorykey.client</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>$PYTHON_SCRIPT</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$APP_DIR</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>$LOG_FILE</string>
+    <key>StandardErrorPath</key>
+    <string>$LOG_FILE</string>
+</dict>
+</plist>
+PLISTEOF
+
+# 卸载旧的（如果存在）
+launchctl unload "$PLIST_FILE" 2>/dev/null
+
+# 加载新的 LaunchAgent
+launchctl load "$PLIST_FILE" 2>/dev/null
+
+# 检查服务是否在运行
+if ! lsof -i :8765 > /dev/null 2>&1; then
+    # 启动服务
+    launchctl start com.factorykey.client 2>/dev/null
+    
+    # 如果 launchctl 失败，直接启动
+    sleep 1
+    if ! lsof -i :8765 > /dev/null 2>&1; then
+        cd "$APP_DIR"
+        nohup /usr/bin/python3 "$PYTHON_SCRIPT" > "$LOG_FILE" 2>&1 &
+    fi
+    
+    # 等待服务启动（最多等待5秒）
+    for i in {1..10}; do
+        sleep 0.5
+        if lsof -i :8765 > /dev/null 2>&1; then
+            break
+        fi
+    done
+fi
+
+# 打开浏览器（优先 Brave，其次 Chrome，最后默认浏览器）
+if [ -d "/Applications/Brave Browser.app" ]; then
+    open -a "Brave Browser" "http://localhost:8765"
+elif [ -d "/Applications/Google Chrome.app" ]; then
+    open -a "Google Chrome" "http://localhost:8765"
+else
+    open "http://localhost:8765"
+fi

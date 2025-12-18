@@ -4,7 +4,7 @@ import os,sys,json,base64,platform,webbrowser,urllib.request,urllib.error,ssl,ti
 from pathlib import Path
 from datetime import datetime
 from http.server import HTTPServer,BaseHTTPRequestHandler
-from urllib.parse import parse_qs,urlparse
+from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
 # 核心函数占位符 - 运行时从云端加载
@@ -41,11 +41,13 @@ def _0xGVR():
             'User-Agent':'ShoneFactory-Client/1.0',
             'Accept':'application/json'
         },method='GET')
-        with urllib.request.urlopen(rq,timeout=10,context=ctx)as rs:
+        with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
             r=json.loads(rs.read().decode('utf-8'))
             return r
-    except:pass
-    return {"success":False}
+    except urllib.error.URLError as e:
+        return {"success":False,"message":f"网络错误: {e.reason}"}
+    except Exception as e:
+        return {"success":False,"message":f"检查失败: {e}"}
 
 def _0xRRF(sfkey_id):
     """向云端提交刷新请求"""
@@ -88,12 +90,66 @@ def _0xGBA(sfkey_id):
     return None
 
 def _0xCQ(sfkey_id):
-    """从云端查询Token - 支持SF-Key前35字符查询"""
+    """从云端快速查询Token - 使用优化的fast-query接口"""
     try:
         ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
         qid=sfkey_id.strip()
         if not qid.startswith('SF-')and len(qid)>=32:qid='SF-'+qid
-        url=f"{_CLOUD_URL}/api/query/{qid}"
+        qid=qid[:35]  # 确保只取前35字符
+        url=f"{_CLOUD_URL}/api/fast-query/{qid}"
+        ts=str(int(time.time()))
+        rq=urllib.request.Request(url,headers={
+            'User-Agent':'ShoneFactory-Client/1.0',
+            'Accept':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':ts
+        },method='GET')
+        with urllib.request.urlopen(rq,timeout=10,context=ctx)as rs:
+            r=json.loads(rs.read().decode('utf-8'))
+            if r.get('success')and r.get('found')and r.get('data'):
+                enc=r.get('data','')
+                if enc:
+                    b64=enc.replace('_','=').replace('-','+').replace('.','/')
+                    b64=b64[::-1]
+                    js=base64.b64decode(b64).decode('utf-8')
+                    return json.loads(js)
+    except urllib.error.URLError as e:
+        print(f"云端查询失败: {e}")
+    except Exception as e:
+        print(f"云端查询异常: {e}")
+    return None
+
+def _0xCQU(user_id):
+    """从云端通过user_id查询Token - 备用查询方式"""
+    if not user_id:return None
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
+        ts=str(int(time.time()))
+        rq=urllib.request.Request(url,headers={
+            'User-Agent':'ShoneFactory-Client/1.0',
+            'Accept':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':ts
+        },method='GET')
+        with urllib.request.urlopen(rq,timeout=20,context=ctx)as rs:
+            r=json.loads(rs.read().decode('utf-8'))
+            if r.get('success')and r.get('found')and r.get('data'):
+                enc=r.get('data','')
+                if enc:
+                    b64=enc.replace('_','=').replace('-','+').replace('.','/')
+                    b64=b64[::-1]
+                    js=base64.b64decode(b64).decode('utf-8')
+                    return json.loads(js)
+    except Exception as e:
+        print(f"云端(user_id)查询异常: {e}")
+    return None
+
+def _0xCQC(sfkey_id):
+    """从云端查询账号凭据(邮箱/密码/Cookie)"""
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
             'User-Agent':'ShoneFactory-Client/1.0',
@@ -103,15 +159,33 @@ def _0xCQ(sfkey_id):
         },method='GET')
         with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
             r=json.loads(rs.read().decode('utf-8'))
-            # 即使过期也返回数据（额度用完前仍可使用）
-            if r.get('success')and r.get('found')and r.get('data'):
+            if r.get('success')and r.get('data'):
                 enc=r.get('data','')
                 if enc:
                     b64=enc.replace('_','=').replace('-','+').replace('.','/')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     return json.loads(js)
-    except:pass
+    except Exception as e:
+        print(f"云端凭据查询异常: {e}")
+    return None
+
+def _0xUTC(sfkey_id,at,rt,ex):
+    """上传Token到云端"""
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
+        ts=str(int(time.time()))
+        rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
+            'User-Agent':'ShoneFactory-Client/1.0',
+            'Content-Type':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':ts
+        },method='POST')
+        with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
+            return json.loads(rs.read().decode('utf-8'))
+    except Exception as e:
+        print(f"云端上传异常: {e}")
     return None
 
 _0xT=time.time()
@@ -174,7 +248,7 @@ def _0xCHK():
     if _0xAD3():_0xWARN();os._exit(1)
 
 def _0xLC():
-    """动态加载核心代码 - 从云端获取，不落盘"""
+    """动态加载核心代码 - 从云端获取，缓存到内存"""
     global _0xCORE
     if _0xCORE is not None:
         return _0xCORE
@@ -189,7 +263,7 @@ def _0xLC():
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
         },method='GET')
-        with urllib.request.urlopen(rq,timeout=10,context=ctx)as rs:
+        with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
             r=json.loads(rs.read().decode('utf-8'))
             if r.get('success')and r.get('core'):
                 enc=r.get('core','')
@@ -198,7 +272,8 @@ def _0xLC():
                     layer1=base64.b64decode(enc).decode('utf-8')
                     layer2=base64.b64decode(layer1)
                     code=zlib.decompress(layer2).decode('utf-8')
-                    # 不保存到 _0xCORE，每次重新获取（安全考虑）
+                    # 缓存到内存，避免每次切换账号都重新请求
+                    _0xCORE=code
                     return code
                 except:pass
     except:pass
@@ -267,14 +342,21 @@ class _0xTM:
             af=s._0xfp()/_S1
             if not af.exists():return None
             with open(af,'r',encoding='utf-8')as f:ad=json.load(f)
-            return ad.get(_S2,None)
+            # auth.json 使用标准字段名 access_token
+            return ad.get('access_token',None)
         except:return None
 
     def _0xgcad(s):
         try:
             af=s._0xfp()/_S1
             if not af.exists():return None
-            with open(af,'r',encoding='utf-8')as f:return json.load(f)
+            with open(af,'r',encoding='utf-8')as f:ad=json.load(f)
+            # auth.json 使用标准字段名，需要转换为编码后的字段名以保持兼容
+            if 'access_token' in ad and _S2 not in ad:
+                ad[_S2]=ad.get('access_token','')
+            if 'refresh_token' in ad and _S3 not in ad:
+                ad[_S3]=ad.get('refresh_token','')
+            return ad
         except:return None
 
     def _0xscl(s):
@@ -296,20 +378,47 @@ class _0xTM:
     def _0xgcli(s):
         ad=s._0xgcad()
         if not ad:return None
-        at=ad.get(_S2,'')
+        at=ad.get(_S2,'');rt=ad.get(_S3,'')
         if not at:return None
         pl=s._0xdj(at)
         if not pl:return None
-        ex=pl.get('exp',0);nw=datetime.now().timestamp();sb=pl.get('sub','')
+        ex=pl.get('exp',0);nw=datetime.now().timestamp();sb=pl.get('sub','');em=pl.get('email','')
         po=s._0xlp();sfk='';in_pool=False
-        # 先通过 access_token 匹配，再通过 sub (用户ID) 匹配
+        # 第一优先：通过 access_token 完全匹配（切换账号后 token 会更新到账号池）
         for a in po['accounts']:
-            a_at=a.get(_S2,'');a_pl=s._0xdj(a_at)
-            if a_at==at or (a_pl and a_pl.get('sub')==sb):
+            if a.get(_S2,'')==at:
                 sfk=a.get('sf_key_line1','')or a.get('key_id','')
                 in_pool=True
                 break
-        return{"email":pl.get('email',''),"sub":sb,"exp":ex,"expired":ex<=nw,"in_pool":in_pool,"sf_key_line1":sfk}
+        # 第二优先：通过 refresh_token 匹配（refresh_token 比 access_token 更稳定）
+        if not in_pool:
+            for a in po['accounts']:
+                if rt and a.get(_S3,'')==rt:
+                    sfk=a.get('sf_key_line1','')or a.get('key_id','')
+                    in_pool=True
+                    break
+        # 如果不在本地池中，自动上传到云端并生成 sfkey
+        if not in_pool and at and rt:
+            try:
+                # 生成 sfkey_id (使用 user_id 的前35字符或生成新的)
+                sfkey_id=f"SF-{sb[:32]}" if sb else f"SF-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                sfkey_id=sfkey_id[:35]
+                # 上传到云端
+                import urllib.request
+                data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"email":em,"exp":ex,"user_id":sb}).encode('utf-8')
+                req=urllib.request.Request(f"{_CU}/api/update",data=data,headers={'Content-Type':'application/json','X-API-Key':_AS},method='POST')
+                with urllib.request.urlopen(req,timeout=15)as resp:
+                    result=json.loads(resp.read().decode('utf-8'))
+                    if result.get('success'):
+                        sfk=sfkey_id
+                        # 添加到本地池
+                        rm=em if em else(f"用户: {sb[:8]}..."if sb else"自动导入")
+                        ac={"key_id":sfkey_id,"sf_key_line1":sfkey_id,_S2:at,_S3:rt,"remark":rm,"added_at":datetime.now().strftime('%Y-%m-%d %H:%M:%S'),"exp":ex}
+                        po['accounts'].append(ac);s._0xsp(po)
+                        in_pool=True
+            except Exception as e:
+                print(f"自动上传云端失败: {e}")
+        return{"email":em,"sub":sb,"exp":ex,"expired":ex<=nw,"in_pool":in_pool,"sf_key_line1":sfk}
 
     def _0xitp(s,at):
         po=s._0xlp()
@@ -324,34 +433,61 @@ class _0xTM:
         ct=ct.strip()
         # 检查是否为短Key（查询码）- 单行35字符以SF-开头
         if ct.startswith('SF-')and len(ct)==35 and '\n'not in ct:
+            print(f"正在从云端快速查询短Key: {ct}")
             cd=_0xCQ(ct)
-            if cd:return cd.get('access_token',''),cd.get('refresh_token',''),ct
+            if cd:
+                print(f"云端查询成功")
+                return cd.get('access_token',''),cd.get('refresh_token',''),ct
+            print(f"云端查询未找到结果")
             return'','',''
-        # 从云端加载核心解码函数
-        code=_0xLC()
-        if code:
+        # 本地解码 SF-Key（多行格式）- 不再依赖云端代码
+        ls=[l.strip()for l in ct.split('\n')if l.strip().startswith('SF-')]
+        if ls and len(ls)>=1:
             try:
-                local_vars={}
-                exec(code,local_vars)
-                _isf=local_vars.get('_isf')
-                _dsf=local_vars.get('_dsf')
-                if _isf and _isf(ct):
-                    at,rt=_dsf(ct)
-                    if at and rt:
-                        ls=[l.strip()for l in ct.split('\n')if l.strip().startswith('SF-')]
-                        sfk=ls[0]if ls else''
-                        return at,rt,sfk
-            except:pass
+                sfk=ls[0][:35]if ls[0]else''
+                # 解码 SF-Key
+                parts=[]
+                for ln in ls:
+                    if ln.startswith('SF-')and len(ln)>=5:
+                        num=ln[3:5]
+                        data=ln[5:]
+                        parts.append((num,data))
+                # 排序并合并
+                parts.sort(key=lambda x:x[0]if x[0]!='00'else'99')
+                enc=''.join(p[1]for p in parts)
+                # 自定义 Base64 解码
+                _CS="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"
+                _SB="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+                tr=str.maketrans(_CS,_SB)
+                b64=enc.translate(tr)
+                pad=4-len(b64)%4
+                if pad<4:b64+='='*pad
+                raw=base64.b64decode(b64)
+                # XOR 解密
+                xk=0x5F
+                dec=bytes(b^xk for b in raw)
+                # zlib 解压
+                js=zlib.decompress(dec).decode('utf-8')
+                d=json.loads(js)
+                at=d.get('access_token','')
+                rt=d.get('refresh_token','')
+                if at and rt:
+                    return at,rt,sfk
+            except Exception as e:
+                print(f"SF-Key本地解码失败: {e}")
+        # JSON 格式
         try:
             if '{'in ct and '}'in ct:
                 st,ed=ct.find('{'),ct.rfind('}')+1;d=json.loads(ct[st:ed]);at=d.get(_S2,'');rt=d.get(_S3,'')
                 if at and rt:return at,rt,''
         except:pass
+        # 正则匹配
         am=re.search(r'["\']?'+_S2+r'["\']?\s*[:\s]\s*["\']?([^"\'}\s,]+(?:\.[^"\'}\s,]+)*)["\']?',ct)
         rm=re.search(r'["\']?'+_S3+r'["\']?\s*[:\s]\s*["\']?([^"\'}\s,]+)["\']?',ct)
         if am:at=am.group(1)
         if rm:rt=rm.group(1)
         if at and rt:return at,rt,''
+        # 两行格式
         ls=[l.strip()for l in ct.split('\n')if l.strip()]
         if len(ls)>=2 and ls[0].count('.')==2:return ls[0],ls[1],''
         return'','',''
@@ -390,25 +526,94 @@ class _0xTM:
 
     def _0xat(s,ct):
         _0xCHK()
+        ct=ct.strip()
+        # 支持多行导入：每行一个 SF-Key
+        lines=[l.strip()for l in ct.split('\n')if l.strip()]
+        if len(lines)>1:
+            # 多行导入模式
+            return s._0xat_multi(lines)
+        # 单行导入
+        po=s._0xlp()
+        sfk_input=''
+        if ct.startswith('SF-'):
+            # 提取 sfkey（短key或完整key的第一行前35字符）
+            sfk_input=ct[:35]
+            # 检查是否已存在
+            for a in po['accounts']:
+                a_sfk=a.get('sf_key_line1','')or a.get('key_id','')
+                if a_sfk and a_sfk[:35]==sfk_input:
+                    return{"success":False,"message":"此 SF-Key 已在账号池中，请点击切换使用","exists":True}
+        # 解码 token
         at,rt,sfk=s._0xpt(ct)
-        if not at or not rt:return{"success":False,"message":"无法识别 Key 格式，请粘贴完整的 SF-Key Token"}
+        if not at or not rt:
+            if ct.startswith('SF-')and len(ct)==35:
+                return{"success":False,"message":"SF-Key 查询失败，请确认 Key 有效或稍后重试"}
+            return{"success":False,"message":"无法识别 Key 格式，请粘贴完整的 SF-Key"}
         pl=s._0xdj(at)
         if not pl:return{"success":False,"message":"无效的 Token 格式"}
-        po=s._0xlp()
+        # 再次检查（通过 access_token）
         for a in po['accounts']:
-            if a[_S2]==at:return{"success":False,"message":"此 Key 已存在于账号池中"}
-        fi=len(po['accounts'])==0
+            if a[_S2]==at:return{"success":False,"message":"此 Key 已在账号池中，请点击切换使用","exists":True}
         ki=sfk if sfk else s._0xgki()
         ex=pl.get('exp',0)
         ac={"key_id":ki,_S2:at,_S3:rt,"remark":"","added_at":datetime.now().strftime('%Y-%m-%d %H:%M:%S'),"exp":ex,"sf_key_line1":sfk}
         po['accounts'].append(ac);s._0xsp(po)
-        if fi:s._0xwa(at,rt)
-        return{"success":True,"message":f"已添加: {ki}","is_first":fi}
+        # 导入即切换：写入 auth.json
+        s._0xwa(at,rt)
+        return{"success":True,"message":f"已添加并切换到: {ki[:35]}..."}
+
+    def _0xat_multi(s,lines):
+        """多行 SF-Key 导入"""
+        _0xCHK()
+        po=s._0xlp()
+        added=[];skipped=[];failed=[]
+        last_at=None;last_rt=None;last_ki=None
+        for line in lines:
+            line=line.strip()
+            if not line:continue
+            # 检查是否已存在
+            sfk_input=line[:35]if line.startswith('SF-')else''
+            exists=False
+            if sfk_input:
+                for a in po['accounts']:
+                    a_sfk=a.get('sf_key_line1','')or a.get('key_id','')
+                    if a_sfk and a_sfk[:35]==sfk_input:
+                        exists=True;break
+            if exists:
+                skipped.append(sfk_input);continue
+            # 解码
+            at,rt,sfk=s._0xpt(line)
+            if not at or not rt:
+                failed.append(line[:20]+'...'if len(line)>20 else line);continue
+            pl=s._0xdj(at)
+            if not pl:
+                failed.append(line[:20]+'...');continue
+            # 检查 access_token 是否已存在
+            for a in po['accounts']:
+                if a[_S2]==at:exists=True;break
+            if exists:
+                skipped.append(sfk[:35]if sfk else'token');continue
+            ki=sfk if sfk else s._0xgki()
+            ex=pl.get('exp',0)
+            ac={"key_id":ki,_S2:at,_S3:rt,"remark":"","added_at":datetime.now().strftime('%Y-%m-%d %H:%M:%S'),"exp":ex,"sf_key_line1":sfk}
+            po['accounts'].append(ac)
+            added.append(ki[:35])
+            last_at=at;last_rt=rt;last_ki=ki
+        s._0xsp(po)
+        # 切换到最后一个导入的账号
+        if last_at and last_rt:
+            s._0xwa(last_at,last_rt)
+        # 构建消息
+        msg=f"导入完成：成功 {len(added)} 个"
+        if skipped:msg+=f"，跳过 {len(skipped)} 个(已存在)"
+        if failed:msg+=f"，失败 {len(failed)} 个"
+        if last_ki:msg+=f"，已切换到: {last_ki[:35]}..."
+        return{"success":len(added)>0,"message":msg,"added":len(added),"skipped":len(skipped),"failed":len(failed)}
 
     def _0xgal(s):
         po=s._0xlp();nw=datetime.now().timestamp();ct=s._0xgct();al=[]
         for i,a in enumerate(po['accounts'],1):
-            ex=a.get('exp',0);ki=a.get('key_id',f'shonetokenkey{i:03d}');ic=a[_S2]==ct
+            ex=a.get('exp',0);ki=a.get('key_id',f'shonetokenkey{i:03d}');ic=a.get(_S2,'')==ct if ct else False
             sfkl1=a.get('sf_key_line1','')
             # 如果 exp 为 0 或已过期但有 refresh_token，显示为"待刷新"而非"过期"
             if ex==0:st='pending';stx='待验证'
@@ -416,12 +621,11 @@ class _0xTM:
             elif a.get(_S3):st='refresh';stx='待刷新'
             else:st='expired';stx='过期'
             bi=s._0bc.get(ki,{});cached=bi.get('cached',False);lu=bi.get('lastUpdated','')
-            # 如果本地查询失败且有 sf_key_line1，尝试从云端获取
-            if (bi.get('error')or bi.get('totalAllowance')is None)and sfkl1:
-                cb=_0xGBA(sfkl1)
-                if cb and cb.get('remaining')is not None:
-                    bi={'totalAllowance':cb.get('totalAllowance'),'totalUsed':cb.get('totalUsed'),'remaining':cb.get('remaining'),'usedRatio':cb.get('usedRatio'),'lastUpdated':cb.get('lastUpdated',''),'error':None,'estimated':cb.get('estimated',True)}
-                    cached=True
+            # 优先使用本地缓存的额度数据
+            cb=a.get('cached_balance',{})
+            if cb and cb.get('remaining') is not None:
+                bi={'totalAllowance':cb.get('totalAllowance'),'totalUsed':cb.get('totalUsed'),'remaining':cb.get('remaining'),'usedRatio':cb.get('usedRatio'),'lastUpdated':cb.get('lastUpdated',''),'error':None,'estimated':False}
+                cached=True;lu=cb.get('lastUpdated','')
             # 如果状态是"待刷新"，额度显示为短横线而不是"查询失败"
             if bi.get('error')and not bi.get('estimated'):
                 if st=='refresh':bs='pending';btx='-';rs='-';us='-'
@@ -444,8 +648,31 @@ class _0xTM:
         po=s._0xlp();idx=ix-1
         if idx<0 or idx>=len(po['accounts']):return{"success":False,"message":"账号不存在"}
         a=po['accounts'][idx]
-        if s._0xwa(a[_S2],a[_S3]):return{"success":True,"message":f"已切换到: {a['key_id']}"}
-        return{"success":False,"message":"切换失败"}
+        at=a.get(_S2,'');rt=a.get(_S3,'');sfkl1=a.get('sf_key_line1','')
+        
+        # 检查 token 是否过期，如果过期尝试从云端获取新 token
+        ex=a.get('exp',0);nw=datetime.now().timestamp()
+        if ex<=nw and sfkl1:
+            # Token 过期，尝试从云端获取最新 token
+            cd=_0xCQ(sfkl1[:35])
+            if cd and cd.get('access_token') and cd.get('refresh_token'):
+                at=cd.get('access_token','')
+                rt=cd.get('refresh_token','')
+                # 更新本地存储
+                po['accounts'][idx][_S2]=at
+                po['accounts'][idx][_S3]=rt
+                pl=s._0xdj(at)
+                if pl:po['accounts'][idx]['exp']=pl.get('exp',0)
+                s._0xsp(po)
+        
+        if not at or not rt:return{"success":False,"message":"账号信息不完整"}
+        if s._0xwa(at,rt):
+            # 切换成功后，自动刷新该账号的额度
+            ki=a.get('key_id','')
+            if at and ki:
+                s._0xfb(at,ki)
+            return{"success":True,"message":f"已切换到: {a['key_id']}"}
+        return{"success":False,"message":"切换失败，请检查网络或重启客户端"}
 
     def _0xda(s,ix):
         po=s._0xlp();idx=ix-1
@@ -459,20 +686,235 @@ class _0xTM:
         po['accounts'][idx]['remark']=rm;s._0xsp(po)
         return{"success":True,"message":"备注已更新"}
 
-    def _0xrsa(s,ix):
-        """刷新单个账号的额度"""
+    def _0xsbo(s):
+        """切换到最优账号（剩余额度最高的有效账号）"""
+        po=s._0xlp();nw=datetime.now().timestamp()
+        best_idx=-1;best_remaining=-1
+        for i,a in enumerate(po['accounts']):
+            ex=a.get('exp',0)
+            # 只考虑有效或待刷新的账号
+            if ex>nw or a.get(_S3):
+                cb=a.get('cached_balance',{})
+                rm=cb.get('remaining',0)
+                if rm>best_remaining:
+                    best_remaining=rm;best_idx=i
+        if best_idx<0:return{"success":False,"message":"没有找到可用账号"}
+        return s._0xswa(best_idx+1)
+
+    def _0xgex(s):
+        """获取已耗尽的账号列表"""
+        po=s._0xlp();exhausted=[]
+        for i,a in enumerate(po['accounts'],1):
+            cb=a.get('cached_balance',{})
+            rm=cb.get('remaining',0)
+            ur=cb.get('usedRatio',0)
+            if rm<=0 or ur>=1.0:
+                ki=a.get('key_id','')
+                exhausted.append({"index":i,"key_id":ki[:35]+'...'if len(ki)>35 else ki,"remaining":rm})
+        return{"success":True,"accounts":exhausted,"count":len(exhausted)}
+
+    def _0xdex(s,indices):
+        """删除已耗尽的账号"""
+        po=s._0xlp()
+        # 按索引从大到小排序，避免删除时索引偏移
+        indices=sorted(indices,reverse=True)
+        deleted=[]
+        for ix in indices:
+            idx=ix-1
+            if 0<=idx<len(po['accounts']):
+                ki=po['accounts'][idx].get('key_id','')
+                deleted.append(ki[:35])
+                del po['accounts'][idx]
+        s._0xsp(po)
+        return{"success":True,"message":f"已删除 {len(deleted)} 个耗尽账号","deleted":len(deleted)}
+
+    def _0xgas(s):
+        """获取自动切换设置"""
+        po=s._0xlp()
+        return{"auto_switch":po.get('auto_switch',False)}
+
+    def _0xsas(s,enabled):
+        """设置自动切换开关"""
+        po=s._0xlp()
+        po['auto_switch']=enabled
+        s._0xsp(po)
+        return{"success":True,"auto_switch":enabled,"message":f"自动切换已{'开启'if enabled else'关闭'}"}
+
+    def _0xrat(s,force_all=False):
+        """全部续期 - 使用 WorkOS API 刷新账号的 Token
+        force_all: True=强制刷新所有账号, False=仅刷新即将过期或已过期的账号
+        refresh_token 有效期约1个月，可用于刷新已过期的 access_token
+        """
+        WORKOS_API_URL="https://api.workos.com/user_management/authenticate"
+        FACTORY_CLIENT_ID="client_01HNM792M5G5G1A2THWPXKFMXB"
+        
+        po=s._0xlp()
+        success_count=0
+        fail_count=0
+        skip_count=0
+        results=[]
+        
+        for i,a in enumerate(po['accounts']):
+            ki=a.get('key_id','')[:20]
+            rt=a.get(_S3,'')  # refresh_token
+            ex=a.get('exp',0)
+            nw=datetime.now().timestamp()
+            
+            # 如果没有 refresh_token，跳过
+            if not rt:
+                skip_count+=1
+                results.append({"key":ki,"status":"skip","msg":"无refresh_token"})
+                continue
+            
+            # 计算剩余时间
+            remaining_hours=(ex-nw)/3600 if ex>nw else 0
+            is_expired=ex<=nw
+            
+            # 非强制模式下，如果 token 还有超过 6 小时有效期，跳过
+            if not force_all and remaining_hours>6:
+                skip_count+=1
+                results.append({"key":ki,"status":"skip","msg":f"有效({remaining_hours:.1f}h)"})
+                continue
+            
+            # 调用 WorkOS API 刷新
+            try:
+                data=urlencode({
+                    'grant_type':'refresh_token',
+                    'client_id':FACTORY_CLIENT_ID,
+                    'refresh_token':rt
+                }).encode('utf-8')
+                
+                req=urllib.request.Request(
+                    WORKOS_API_URL,
+                    data=data,
+                    headers={'Content-Type':'application/x-www-form-urlencoded'},
+                    method='POST'
+                )
+                
+                with urllib.request.urlopen(req,timeout=30)as resp:
+                    result=json.loads(resp.read().decode('utf-8'))
+                    new_at=result.get('access_token','')
+                    new_rt=result.get('refresh_token','')
+                    
+                    if new_at:
+                        po['accounts'][i][_S2]=new_at
+                        if new_rt:
+                            po['accounts'][i][_S3]=new_rt
+                        # 解析新 token 的过期时间
+                        new_pl=s._0xdj(new_at)
+                        if new_pl:
+                            po['accounts'][i]['exp']=new_pl.get('exp',0)
+                        success_count+=1
+                        status_msg="已过期->刷新成功" if is_expired else "刷新成功"
+                        results.append({"key":ki,"status":"success","msg":status_msg})
+                    else:
+                        fail_count+=1
+                        results.append({"key":ki,"status":"fail","msg":"无access_token"})
+                        
+            except urllib.error.HTTPError as e:
+                error_body=e.read().decode('utf-8')
+                try:
+                    error_json=json.loads(error_body)
+                    error_desc=error_json.get('error_description',error_json.get('error',''))
+                    if 'already exchanged' in error_desc.lower():
+                        results.append({"key":ki,"status":"fail","msg":"token已使用,需重新登录"})
+                    elif 'expired' in error_desc.lower():
+                        results.append({"key":ki,"status":"fail","msg":"refresh_token已过期"})
+                    else:
+                        results.append({"key":ki,"status":"fail","msg":error_desc[:30]})
+                except:
+                    results.append({"key":ki,"status":"fail","msg":f"HTTP{e.code}"})
+                fail_count+=1
+            except Exception as e:
+                fail_count+=1
+                results.append({"key":ki,"status":"fail","msg":str(e)[:30]})
+        
+        # 保存更新后的账号池
+        s._0xsp(po)
+        
+        return{
+            "success":True,
+            "message":f"续期完成: 成功 {success_count}, 失败 {fail_count}, 跳过 {skip_count}",
+            "success_count":success_count,
+            "fail_count":fail_count,
+            "skip_count":skip_count,
+            "results":results
+        }
+
+    def _0xrsa(s,ix,force_cloud=True):
+        """刷新单个账号的额度
+        force_cloud: True=用户主动刷新时同步云端, False=仅用官方API查询额度
+        """
         po=s._0xlp();idx=ix-1
         if idx<0 or idx>=len(po['accounts']):return{"success":False,"message":"账号不存在"}
         a=po['accounts'][idx];ki=a.get('key_id','');at=a.get(_S2,'');ex=a.get('exp',0);nw=datetime.now().timestamp()
-        # 如果 Token 过期，先尝试刷新 Token
+        sfkl1=a.get('sf_key_line1','')
+        cloud_synced=False
+        last_sync=a.get('last_cloud_sync',0)
+        sync_interval=300  # 5分钟内不重复同步云端
+        
+        # 仅在 force_cloud=True 且距离上次同步超过间隔时才查询云端
+        if force_cloud and (nw - last_sync > sync_interval):
+            print(f"[云端同步] {ki} - 正在查询云端...")
+            cd=None
+            # 从本地 token 中提取 user_id 用于备用查询
+            user_id=None
+            if at:
+                pl=s._0xdj(at)
+                if pl:user_id=pl.get('id','')
+            # 方式1: 用 sfkey_id 查询
+            if sfkl1:
+                cd=_0xCQ(sfkl1[:35])
+            # 方式2: 如果 sfkey_id 查询失败，用 user_id 查询（备用）
+            if not cd and user_id:
+                print(f"[云端同步] {ki} - sfkey_id查询失败，尝试user_id查询...")
+                cd=_0xCQU(user_id)
+                # 如果通过 user_id 查到了新的 sfkey_id，更新本地
+                if cd and cd.get('sfkey_id'):
+                    new_sfkey=cd.get('sfkey_id')
+                    print(f"[云端同步] {ki} - 通过user_id查到新sfkey: {new_sfkey}")
+                    po['accounts'][idx]['sf_key_line1']=new_sfkey
+            if cd and cd.get('access_token') and cd.get('refresh_token'):
+                new_at=cd.get('access_token','')
+                new_rt=cd.get('refresh_token','')
+                new_pl=s._0xdj(new_at)
+                new_exp=new_pl.get('exp',0) if new_pl else 0
+                # 如果云端 token 比本地新，则更新
+                if new_exp>ex:
+                    print(f"[云端同步] {ki} - 发现更新! 本地exp:{ex} -> 云端exp:{new_exp}")
+                    po['accounts'][idx][_S2]=new_at
+                    po['accounts'][idx][_S3]=new_rt
+                    po['accounts'][idx]['exp']=new_exp
+                    po['accounts'][idx]['last_cloud_sync']=int(nw)
+                    s._0xsp(po)
+                    at=new_at
+                    ex=new_exp
+                    cloud_synced=True
+                    po=s._0xlp()
+                else:
+                    print(f"[云端同步] {ki} - 无更新 (云端exp:{new_exp} <= 本地exp:{ex})")
+                    po['accounts'][idx]['last_cloud_sync']=int(nw)
+                    s._0xsp(po)
+            else:
+                print(f"[云端同步] {ki} - 云端无数据")
+                po['accounts'][idx]['last_cloud_sync']=int(nw)
+                s._0xsp(po)
+        elif force_cloud:
+            print(f"[云端同步] {ki} - 跳过 (距上次同步不足5分钟)")
+        
+        # 如果 Token 过期，尝试通过官方 API 刷新
         if ex<=nw and a.get(_S3):
             rr=s._0xrta_internal(idx)
             if rr.get('success'):
                 po=s._0xlp();at=po['accounts'][idx].get(_S2,'')
-        # 查询额度
+        
+        # 查询额度（始终使用官方API）
         if at:
             sc=s._0xfb(at,ki)
-            if sc:return{"success":True,"message":f"额度刷新成功: {ki}"}
+            if sc:
+                msg=f"额度刷新成功: {ki}"
+                if cloud_synced:msg=f"已从云端同步并刷新额度: {ki}"
+                return{"success":True,"message":msg}
         return{"success":False,"message":"额度刷新失败，请稍后重试"}
 
     def _0xrta_internal(s,idx):
@@ -571,20 +1013,262 @@ class _0xTM:
         except:pass
         return None
 
-    def _0xrab(s):
+    def _0xrab(s,force_cloud=False):
+        """刷新所有账号额度
+        force_cloud: True=同步云端后刷新（用户手动触发）, False=仅刷新当前账号（后台自动刷新用）
+        """
         po=s._0xlp();rs=[];nw=datetime.now().timestamp()
-        for i,a in enumerate(po['accounts']):
-            ki=a.get('key_id','');at=a.get(_S2,'');ex=a.get('exp',0)
-            # 如果 token 过期，先尝试刷新
-            if ex<=nw and a.get(_S3):
-                rr=s._0xrta(i+1)
-                if rr.get('success'):
-                    po=s._0xlp()
-                    at=po['accounts'][i].get(_S2,'')
-            if at:sc=s._0xfb(at,ki);rs.append({'key_id':ki,'success':sc})
+        ct=s._0xgct()  # 当前登录的 access_token
+        
+        if force_cloud:
+            # 用户手动刷新：刷新所有账号
+            for i,a in enumerate(po['accounts']):
+                ki=a.get('key_id','')
+                rr=s._0xrsa(i+1,force_cloud=True)
+                rs.append({'key_id':ki,'success':rr.get('success',False)})
+        else:
+            # 后台自动刷新：只刷新当前登录账号
+            for i,a in enumerate(po['accounts']):
+                if ct and a.get(_S2,'')==ct:
+                    ki=a.get('key_id','')
+                    rr=s._0xrsa(i+1,force_cloud=False)
+                    rs.append({'key_id':ki,'success':rr.get('success',False)})
+                    break
         return rs
 
     def _0xgbi(s,ki):return s._0bc.get(ki,{})
+
+    def _0xSRCC(s):
+        """清空Chrome的Google账户信息"""
+        import subprocess,shutil
+        system=platform.system()
+        try:
+            if system=='Darwin':
+                subprocess.run(['pkill','-f','Google Chrome'],capture_output=True)
+                time.sleep(1)
+                chrome_dir=Path.home()/'Library'/'Application Support'/'Google'/'Chrome'
+                if chrome_dir.exists():
+                    for item in ['Default','Profile 1','Profile 2','Profile 3']:
+                        p=chrome_dir/item
+                        if p.exists():
+                            for sub in ['Cookies','Login Data','Web Data','Google Profile']:
+                                sp=p/sub
+                                if sp.exists():
+                                    if sp.is_dir():shutil.rmtree(sp,ignore_errors=True)
+                                    else:sp.unlink(missing_ok=True)
+                    return{"success":True,"message":"Chrome Google信息已清空"}
+                return{"success":False,"message":"未找到Chrome目录"}
+            elif system=='Windows':
+                subprocess.run(['taskkill','/F','/IM','chrome.exe'],capture_output=True)
+                time.sleep(1)
+                chrome_dir=Path(os.environ.get('LOCALAPPDATA',''))/'Google'/'Chrome'/'User Data'
+                if chrome_dir.exists():
+                    for item in ['Default','Profile 1','Profile 2']:
+                        p=chrome_dir/item
+                        if p.exists():
+                            for sub in ['Cookies','Login Data','Web Data']:
+                                sp=p/sub
+                                if sp.exists():sp.unlink(missing_ok=True)
+                    return{"success":True,"message":"Chrome Google信息已清空"}
+                return{"success":False,"message":"未找到Chrome目录"}
+            return{"success":False,"message":f"不支持的系统: {system}"}
+        except Exception as e:
+            return{"success":False,"message":f"清空失败: {e}"}
+
+    def _0xSRCL(s,key_id):
+        """Cookie登录 - 从云端获取Cookie并注入Chrome"""
+        if not key_id:return{"success":False,"message":"未指定账号"}
+        po=s._0xlp()
+        sfkl1=None
+        for a in po['accounts']:
+            if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
+                sfkl1=a.get('sf_key_line1','')
+                break
+        if not sfkl1:return{"success":False,"message":"未找到账号"}
+        # 从云端获取Cookie
+        cd=_0xCQC(sfkl1[:35])
+        if not cd or not cd.get('cookie'):
+            return{"success":False,"message":"云端无Cookie数据，请联系管理员"}
+        cookie=cd.get('cookie','')
+        # 注入Cookie到Chrome (macOS)
+        if platform.system()=='Darwin':
+            try:
+                import subprocess
+                # 打开Google账户页面
+                script=f'''
+                tell application "Google Chrome"
+                    activate
+                    open location "https://accounts.google.com/"
+                end tell
+                delay 2
+                tell application "Google Chrome"
+                    execute front window's active tab javascript "document.cookie='{cookie}'; location.reload();"
+                end tell
+                '''
+                subprocess.run(['osascript','-e',script],capture_output=True)
+                return{"success":True,"message":"Cookie已注入，请检查登录状态"}
+            except Exception as e:
+                return{"success":False,"message":f"注入失败: {e}"}
+        return{"success":False,"message":"当前系统暂不支持Cookie注入"}
+
+    def _0xSROL(s,target_system=None):
+        """打开登录页 - 使用后台线程避免阻塞
+        target_system: 'mac' 或 'windows'，如果为空则自动检测
+        """
+        import subprocess
+        import threading
+        
+        # 如果指定了目标系统，使用指定的；否则自动检测
+        if target_system=='mac':
+            run_system='Darwin'
+        elif target_system=='windows':
+            run_system='Windows'
+        else:
+            run_system=platform.system()
+        
+        def clear_auth_json():
+            """清理auth.json"""
+            auth_file=Path.home()/'.factory'/'auth.json'
+            if auth_file.exists():
+                try:
+                    auth_file.unlink()
+                    return True
+                except:pass
+            return True
+        
+        def run_login_flow_mac():
+            """Mac后台执行登录流程"""
+            try:
+                clear_auth_json()
+                # 完整流程：启动droid -> 输入/login -> 回车 -> 等待列表 -> 回车确认
+                script='''
+                tell application "Terminal"
+                    activate
+                    do script "droid"
+                end tell
+                delay 6
+                tell application "System Events"
+                    tell process "Terminal"
+                        keystroke "/login"
+                        delay 0.5
+                        keystroke return
+                        delay 2
+                        keystroke return
+                    end tell
+                end tell
+                '''
+                result=subprocess.run(['osascript','-e',script],capture_output=True,text=True,timeout=30)
+                if result.returncode!=0:
+                    print(f"AppleScript执行失败: {result.stderr}")
+            except Exception as e:
+                print(f"登录流程执行失败: {e}")
+        
+        def run_login_flow_windows():
+            """Windows后台执行登录流程"""
+            try:
+                clear_auth_json()
+                # 完整流程：启动droid -> 输入/login -> 回车 -> 等待列表 -> 回车确认
+                ps_script='''
+                Start-Process cmd -ArgumentList '/k "droid"' -PassThru
+                Start-Sleep -Seconds 6
+                $wshell = New-Object -ComObject WScript.Shell
+                $wshell.AppActivate('droid')
+                Start-Sleep -Seconds 1
+                $wshell.SendKeys('/login')
+                Start-Sleep -Milliseconds 500
+                $wshell.SendKeys('{ENTER}')
+                Start-Sleep -Seconds 2
+                $wshell.SendKeys('{ENTER}')
+                '''
+                subprocess.run(['powershell','-Command',ps_script],capture_output=True,text=True,timeout=30)
+            except Exception as e:
+                print(f"Windows登录流程执行失败: {e}")
+        
+        try:
+            if run_system=='Darwin':
+                thread=threading.Thread(target=run_login_flow_mac,daemon=True)
+                thread.start()
+                return{"success":True,"message":"正在启动登录流程 (Mac)...\n请等待终端打开并自动执行/login命令\n然后在浏览器中点击「连接设备」"}
+            
+            elif run_system=='Windows':
+                thread=threading.Thread(target=run_login_flow_windows,daemon=True)
+                thread.start()
+                return{"success":True,"message":"正在启动登录流程 (Windows)...\n请等待命令提示符打开并自动执行/login命令\n然后在浏览器中点击「连接设备」"}
+            
+            return{"success":False,"message":f"不支持的系统: {run_system}"}
+        except Exception as e:
+            return{"success":False,"message":f"启动失败: {e}"}
+
+    def _0xGAR(s,key_id):
+        """获取账号地区信息 - 从云端查询"""
+        if not key_id:return{"success":False,"message":"未指定账号"}
+        po=s._0xlp()
+        sfkl1=None
+        for a in po['accounts']:
+            if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
+                sfkl1=a.get('sf_key_line1','')
+                break
+        if not sfkl1:return{"success":False,"message":"未找到账号"}
+        # 从云端获取地区信息
+        cd=_0xCQC(sfkl1[:35])
+        if cd and cd.get('region'):
+            return{"success":True,"region":cd.get('region','')}
+        return{"success":False,"message":"未设置地区信息"}
+
+    def _0xSRGC(s,key_id):
+        """获取账号凭据 - 从云端获取邮箱和密码"""
+        if not key_id:return{"success":False,"message":"未指定账号"}
+        po=s._0xlp()
+        sfkl1=None
+        for a in po['accounts']:
+            if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
+                sfkl1=a.get('sf_key_line1','')
+                break
+        if not sfkl1:return{"success":False,"message":"未找到账号"}
+        # 从云端获取凭据
+        cd=_0xCQC(sfkl1[:35])
+        if not cd:return{"success":False,"message":"云端无凭据数据"}
+        return{"success":True,"email":cd.get('email',''),"password":cd.get('password','')}
+
+    def _0xSRUA(s,key_id):
+        """更新账号 - 检查auth.json并上传到云端"""
+        if not key_id:return{"success":False,"message":"未指定账号"}
+        auth_file=Path.home()/'.factory'/'auth.json'
+        if not auth_file.exists():
+            return{"success":False,"message":"auth.json不存在，请先完成登录"}
+        try:
+            with open(auth_file,'r')as f:
+                auth=json.load(f)
+            at=auth.get('access_token','')
+            rt=auth.get('refresh_token','')
+            if not at or not rt:
+                return{"success":False,"message":"auth.json中没有有效Token"}
+            pl=s._0xdj(at)
+            if not pl:return{"success":False,"message":"Token格式无效"}
+            ex=pl.get('exp',0)
+            nw=datetime.now().timestamp()
+            if ex<=nw:return{"success":False,"message":"Token已过期，请重新登录"}
+            # 更新本地token_pool
+            po=s._0xlp()
+            updated=False
+            for i,a in enumerate(po['accounts']):
+                if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
+                    po['accounts'][i][_S2]=at
+                    po['accounts'][i][_S3]=rt
+                    po['accounts'][i]['exp']=ex
+                    updated=True
+                    sfkl1=a.get('sf_key_line1','')
+                    break
+            if not updated:return{"success":False,"message":"账号池中未找到此账号"}
+            s._0xsp(po)
+            # 上传到云端
+            if sfkl1:
+                r=_0xUTC(sfkl1[:35],at,rt,ex)
+                if r and r.get('success'):
+                    return{"success":True,"message":"账号已更新并同步到云端"}
+            return{"success":True,"message":"账号已更新（本地），云端同步需管理员操作"}
+        except Exception as e:
+            return{"success":False,"message":f"更新失败: {e}"}
 
 _H1='''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -687,6 +1371,13 @@ _H1='''<!DOCTYPE html>
         .loading-message { color: #f8f8f2; font-size: 14px; margin-top: 10px; }
         .spinner { border: 4px solid #44475a; border-top: 4px solid #bd93f9; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .switch input:checked + .slider { background-color: #50fa7b; }
+        .switch .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        .switch input:checked + .slider:before { transform: translateX(20px); }
+        .exhausted-list { max-height: 300px; overflow-y: auto; margin: 15px 0; }
+        .exhausted-item { display: flex; align-items: center; padding: 10px; background: #1e1e2e; border-radius: 6px; margin-bottom: 8px; }
+        .exhausted-item input { margin-right: 10px; }
+        .exhausted-item .key-id { font-family: monospace; font-size: 12px; color: #ff5555; }
     </style>
 </head>
 <body>
@@ -720,7 +1411,7 @@ _H1='''<!DOCTYPE html>
             </div>
             <div class="info-row">
                 <span id="contactInfo">联系作者: haooicq@gmail.com</span>
-                <a href="https://pay.ldxp.cn/shop/D4P96006" target="_blank" id="purchaseLink">获取Token: 点击购买</a>
+                <a href="#" target="_blank" id="purchaseLink" style="display:none;"></a>
                 <span style="color: #6272a4; font-size: 11px; cursor: pointer;" onclick="checkVersion()">🔄 检查更新</span>
             </div>
         </div>
@@ -730,10 +1421,20 @@ _H1='''<!DOCTYPE html>
         </div>
         <div class="card">
             <div class="card-title">账号池</div>
-            <div class="toolbar">
+            <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <button class="btn btn-secondary" onclick="loadAccounts()">刷新列表</button>
                 <button class="btn btn-primary" onclick="refreshAllBalances()">💰 刷新额度</button>
-                <button class="btn btn-success" onclick="syncCurrentLogin()">📥 导入当前登录</button>
+                <button class="btn btn-success" onclick="renewAllTokens()">🔄 全部续期</button>
+                <div style="display: flex; align-items: center; gap: 5px; margin-left: 15px; padding: 5px 10px; background: #1e1e2e; border-radius: 6px;">
+                    <span style="font-size: 12px; color: #8be9fd;">🔄 自动切换:</span>
+                    <label class="switch" style="position: relative; display: inline-block; width: 40px; height: 20px;">
+                        <input type="checkbox" id="autoSwitchToggle" onchange="toggleAutoSwitch()" style="opacity: 0; width: 0; height: 0;">
+                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #44475a; transition: .3s; border-radius: 20px;"></span>
+                    </label>
+                    <span id="autoSwitchStatus" style="font-size: 11px; color: #6272a4;">关闭</span>
+                </div>
+                <button class="btn" style="background: linear-gradient(135deg, #8be9fd, #50fa7b); color: #282a36;" onclick="switchToBest()">⚡ 手动切换最优</button>
+                <button class="btn btn-danger" onclick="showExhaustedAccounts()">🗑️ 删除已耗尽</button>
             </div>
             <div id="accountList"></div>
         </div>
@@ -746,6 +1447,66 @@ _H1='''<!DOCTYPE html>
             <div class="btn-row">
                 <button class="btn btn-primary" onclick="saveRemark()">保存</button>
                 <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="selfRefreshModal">
+        <div class="modal-content" style="max-width: 580px;">
+            <h3 class="modal-title">🔄 自主刷新账号</h3>
+            <p style="color: #8be9fd; font-size: 12px; margin-bottom: 5px;">Key: <span id="refreshKeyIdDisplay" style="font-family: monospace;"></span></p>
+            <p style="color: #ffb86c; font-size: 11px; margin-bottom: 10px;">地区节点: <span id="refreshRegionDisplay">-</span></p>
+            <div style="background: #1e1e2e; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 11px; color: #cdd6f4; max-height: 180px; overflow-y: auto;">
+                <div style="color: #f9e2af; font-weight: bold; margin-bottom: 8px;">📋 刷新步骤：</div>
+                <div style="margin-bottom: 4px;">1️⃣ 设置 Chrome 为默认浏览器（刷新完之后可以改回去）</div>
+                <div style="margin-bottom: 4px;">2️⃣ 将您的干净节点切换至「<span style="color:#50fa7b;" id="refreshRegionHint">对应地区</span>」</div>
+                <div style="margin-bottom: 4px;">3️⃣ 点击下方「🍪 Cookie注入」将云端Cookie注入到Chrome</div>
+                <div style="margin-bottom: 4px;">4️⃣ 点击下方「🌐 打开登录页」选择您的系统后启动登录流程</div>
+                <div style="margin-bottom: 4px;">5️⃣ 如果账户未自动登录，请点击「复制账号」「复制密码」手动登录</div>
+                <div style="margin-bottom: 4px;">6️⃣ 登录成功后，在浏览器中点击「连接设备」</div>
+                <div style="margin-bottom: 8px;">7️⃣ 最后点击「✅ 更新账号」保存Token</div>
+                <div style="color: #6272a4; font-size: 10px; border-top: 1px dashed #44475a; padding-top: 8px;">
+                    💡 备注：不自主刷新账号功能仍可使用，但无法查询余额。如果流程繁琐，可点击「📨 申请刷新」，服务器会在闲时进行刷新同步。
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                <button class="btn" style="background: linear-gradient(135deg, #ff79c6, #bd93f9); color: white; padding: 10px 8px;" onclick="selfRefreshCookieInject()">🍪 Cookie注入</button>
+                <button class="btn" style="background: linear-gradient(135deg, #bd93f9, #8be9fd); color: white; padding: 10px 8px;" onclick="showSystemSelect()">🌐 打开登录页</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                <button class="btn" style="background: linear-gradient(135deg, #f1fa8c, #ffb86c); color: #282a36; padding: 8px 6px; font-size: 12px;" onclick="selfRefreshCopyEmail()">📧 复制账号</button>
+                <button class="btn" style="background: linear-gradient(135deg, #ffb86c, #ff5555); color: white; padding: 8px 6px; font-size: 12px;" onclick="selfRefreshCopyPassword()">🔑 复制密码</button>
+                <button class="btn btn-secondary" style="padding: 8px 6px; font-size: 12px;" onclick="selfRefreshClearChrome()">🗑️ 清空Chrome</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px;">
+                <button class="btn" style="background: linear-gradient(135deg, #50fa7b, #8be9fd); color: #282a36; padding: 12px; font-size: 14px; font-weight: bold;" onclick="selfRefreshUpdateAccount()">✅ 更新账号（登录成功后点击）</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" style="flex: 1; font-size: 11px;" onclick="selfRefreshSubmitRequest()">📨 申请刷新</button>
+                <button class="btn btn-secondary" style="flex: 1; font-size: 11px;" onclick="closeSelfRefreshModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="systemSelectModal">
+        <div class="modal-content" style="max-width: 350px;">
+            <h3 class="modal-title">🖥️ 选择您的系统</h3>
+            <p style="color: #6272a4; font-size: 12px; margin-bottom: 15px;">请选择您当前使用的操作系统：</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <button class="btn" style="background: linear-gradient(135deg, #6272a4, #44475a); color: white; padding: 20px; font-size: 14px;" onclick="selfRefreshOpenLoginMac()">🍎 Mac 系统</button>
+                <button class="btn" style="background: linear-gradient(135deg, #8be9fd, #6272a4); color: #282a36; padding: 20px; font-size: 14px;" onclick="selfRefreshOpenLoginWindows()">🪟 Windows</button>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-secondary" style="width: 100%;" onclick="closeSystemSelect()">取消</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="exhaustedModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3 class="modal-title">🗑️ 删除已耗尽账号</h3>
+            <p style="color: #6272a4; font-size: 12px; margin-bottom: 10px;">以下账号额度已耗尽，勾选后点击删除</p>
+            <div class="exhausted-list" id="exhaustedList">加载中...</div>
+            <div class="btn-row">
+                <button class="btn btn-danger" onclick="confirmDeleteExhausted()">确认删除</button>
+                <button class="btn btn-secondary" onclick="closeExhaustedModal()">取消</button>
             </div>
         </div>
     </div>
@@ -809,26 +1570,82 @@ _H1='''<!DOCTYPE html>
             setTimeout(() => toast.remove(), 3000);
         }
         function clearInput() { document.getElementById('tokenInput').value = ''; }
+        
+        // 服务状态检测和自动重连
+        let serverOnline = true;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 100;
+        
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'ping' }),
+                    signal: AbortSignal.timeout(3000)
+                });
+                if (response.ok) {
+                    if (!serverOnline) {
+                        serverOnline = true;
+                        reconnectAttempts = 0;
+                        showToast('服务已恢复连接', 'success');
+                        loadLoginStatus();
+                        loadAccounts();
+                    }
+                    return true;
+                }
+            } catch (e) {
+                if (serverOnline) {
+                    serverOnline = false;
+                    showToast('服务连接断开，正在尝试重连...', 'error');
+                }
+            }
+            return false;
+        }
+        
+        // 每5秒检测一次服务状态
+        setInterval(async () => {
+            if (!serverOnline) {
+                reconnectAttempts++;
+                if (reconnectAttempts <= maxReconnectAttempts) {
+                    await checkServerStatus();
+                }
+            } else {
+                await checkServerStatus();
+            }
+        }, 5000);
+        
         async function api(action, data = {}) {
-            const response = await fetch('/api', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, ...data })
-            });
-            return response.json();
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, ...data })
+                });
+                serverOnline = true;
+                return response.json();
+            } catch (e) {
+                serverOnline = false;
+                showToast('服务连接失败，请检查客户端是否运行', 'error');
+                return { success: false, message: '服务未响应' };
+            }
         }
         async function addToken() {
             const content = document.getElementById('tokenInput').value.trim();
             if (!content) { showToast('请先粘贴 Key', 'error'); return; }
-            showLoading('API Key 正在读取中...', 30000);
+            showLoading('您的 SF-Key 正在加载中，请稍后...', 20000);
             const result = await api('add', { content });
             hideLoading();
             if (result.success) {
                 showToast(result.message, 'success');
                 clearInput();
                 loadAccounts();
-                if (result.is_first) { showToast('配置完成，可直接使用！', 'success'); }
-            } else { showToast(result.message, 'error'); }
+                loadLoginStatus();
+            } else if (result.exists) {
+                showToast(result.message, 'info');
+            } else { 
+                showToast(result.message, 'error'); 
+            }
         }
         async function loadAccounts() {
             const result = await api('list');
@@ -848,7 +1665,10 @@ _H1='''<!DOCTYPE html>
                 const statusTip = acc.status === 'refresh' ? ' title="服务端已进入节能模式，状态待刷新，额度用完前并不影响使用"' : '';
                 const balanceTip = acc.balance_status === 'error' ? ' title="注意：查询失败并不代表key失效，如果key额度高于20%请在几小时后重新查询，在额度使用完之前，此提示并不影响使用"' : cachedTip;
                 const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn-request-refresh" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">📨 申请刷新</button>` : '';
-                html += `<tr><td>${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${refreshRequestBtn}${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td><button class="btn btn-success action-btn" onclick="switchAccount(${acc.index})">切换</button><button class="btn btn-secondary action-btn" onclick="refreshToken(${acc.index})">刷新</button><button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
+                const actionBtn = acc.is_current 
+                    ? '<span class="btn btn-success action-btn" style="cursor:default;opacity:0.8;">已登录</span>' 
+                    : `<button class="btn btn-success action-btn" onclick="switchAccount(${acc.index})">切换</button>`;
+                html += `<tr><td>${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${refreshRequestBtn}${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td>${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
             }
             html += '</tbody></table></div>';
             container.innerHTML = html;
@@ -859,41 +1679,60 @@ _H1='''<!DOCTYPE html>
             if (result.success) { showToast('额度查询完成', 'success'); loadAccounts(); }
             else { showToast(result.message || '查询失败', 'error'); }
         }
+        async function renewAllTokens() {
+            const choice = confirm('全部续期说明：\\n\\n• 默认仅续期剩余 < 6小时 或已过期的账号\\n• refresh_token 有效期约1个月\\n• 已使用过的 refresh_token 需重新登录\\n\\n点击「确定」执行智能续期\\n点击「取消」后可选择强制续期所有账号');
+            if (choice) {
+                // 智能续期
+                showToast('正在智能续期...', 'info');
+                const result = await api('renew_all_tokens', { force_all: false });
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    loadAccounts();
+                    loadLoginStatus();
+                } else {
+                    showToast(result.message || '续期失败', 'error');
+                }
+            } else {
+                // 询问是否强制续期
+                if (confirm('是否强制续期所有账号？\\n（包括还在有效期内的账号）')) {
+                    showToast('正在强制续期所有账号...', 'info');
+                    const result = await api('renew_all_tokens', { force_all: true });
+                    if (result.success) {
+                        showToast(result.message, 'success');
+                        loadAccounts();
+                        loadLoginStatus();
+                    } else {
+                        showToast(result.message || '续期失败', 'error');
+                    }
+                }
+            }
+        }
         async function loadLoginStatus() {
             const container = document.getElementById('loginStatus');
             try {
                 const result = await api('login_info');
                 if (result.success && result.info) {
                     const info = result.info;
-                    // 如果已同步到账号池，即使过期也显示"已同步，状态待更新"
+                    // 只显示有效/过期状态
                     let statusBadge;
-                    if (info.in_pool && info.expired) {
-                        statusBadge = '<span class="status-badge badge-synced">已同步，状态待更新</span>';
-                    } else if (info.expired) {
+                    if (info.expired) {
                         statusBadge = '<span class="status-badge badge-expired">已过期</span>';
                     } else {
                         statusBadge = '<span class="status-badge badge-active">有效</span>';
                     }
-                    const syncBadge = info.in_pool ? '<span class="status-badge badge-synced">已同步</span>' : '<span class="status-badge badge-none">未同步</span>';
+                    // 优先显示 sfkey，其次邮箱
                     let userDisplay = info.sf_key_line1 || info.email || (info.sub ? `用户ID: ${info.sub.substring(0, 12)}...` : '未知用户');
                     if (userDisplay.startsWith('SF-') && userDisplay.length > 35) userDisplay = userDisplay.substring(0, 35) + '...';
-                    container.innerHTML = `<div class="status-row"><div class="user-info"><span style="font-family: monospace; font-size: 12px;">🔐 ${userDisplay}</span>${statusBadge}${info.in_pool ? '' : syncBadge}</div>${!info.in_pool ? '<button class="btn btn-success" onclick="syncCurrentLogin()">📥 导入到账号池</button>' : ''}</div>`;
+                    container.innerHTML = `<div class="status-row"><div class="user-info"><span style="font-family: monospace; font-size: 12px;">🔐 ${userDisplay}</span>${statusBadge}</div></div>`;
                 } else { container.innerHTML = '<span style="color: #6272a4;">❌ 未检测到登录账号（请先运行 droid auth login）</span>'; }
             } catch (e) { container.innerHTML = '<span style="color: #ff5555;">检测失败</span>'; }
         }
-        async function syncCurrentLogin() {
-            showToast('正在导入当前登录账号...', 'info');
-            const result = await api('sync_login');
-            if (result.synced) { showToast(result.message, 'success'); loadAccounts(); loadLoginStatus(); setTimeout(() => refreshAllBalances(), 1000); }
-            else if (result.exists) { showToast('账号已在池中', 'info'); }
-            else { showToast(result.message || '导入失败', 'error'); }
-        }
         async function switchAccount(index) {
-            showLoading('正在切换账号...', 20000);
+            showLoading('正在切换账号...', 35000);
             const result = await api('switch', { index });
             hideLoading();
             showToast(result.message, result.success ? 'success' : 'error');
-            if (result.success) loadAccounts();
+            if (result.success) { loadAccounts(); loadLoginStatus(); }
         }
         async function deleteAccount(index) {
             if (!confirm('确定要删除这个账号吗？')) return;
@@ -920,18 +1759,108 @@ _H1='''<!DOCTYPE html>
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { closeModal(); loadAccounts(); }
         }
+        let currentRefreshKeyId = '';
+        let currentRefreshRegion = '';
         async function requestRefresh(keyId) {
-            if (!confirm('确定要向管理员申请刷新此Key吗？\\n管理员会在看到请求后尽快处理。')) return;
+            currentRefreshKeyId = keyId;
+            document.getElementById('selfRefreshModal').classList.add('active');
+            document.getElementById('refreshKeyIdDisplay').textContent = keyId.substring(0, 35) + '...';
+            // 获取账号的地区信息
+            const result = await api('get_account_region', { key_id: keyId });
+            if (result.success && result.region) {
+                currentRefreshRegion = result.region;
+                document.getElementById('refreshRegionDisplay').textContent = result.region;
+                document.getElementById('refreshRegionHint').textContent = result.region;
+            } else {
+                currentRefreshRegion = '';
+                document.getElementById('refreshRegionDisplay').textContent = '未设置';
+                document.getElementById('refreshRegionHint').textContent = '对应地区';
+            }
+        }
+        function closeSelfRefreshModal() {
+            document.getElementById('selfRefreshModal').classList.remove('active');
+            currentRefreshKeyId = '';
+            currentRefreshRegion = '';
+        }
+        async function selfRefreshClearChrome() {
+            showToast('正在清空Chrome Google信息...', 'info');
+            const result = await api('self_refresh_clear_chrome');
+            showToast(result.message, result.success ? 'success' : 'error');
+        }
+        async function selfRefreshCookieInject() {
+            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
+            showToast('正在从云端获取Cookie并注入...', 'info');
+            const result = await api('self_refresh_cookie_login', { key_id: currentRefreshKeyId });
+            showToast(result.message, result.success ? 'success' : 'error');
+        }
+        function showSystemSelect() {
+            document.getElementById('systemSelectModal').classList.add('active');
+        }
+        function closeSystemSelect() {
+            document.getElementById('systemSelectModal').classList.remove('active');
+        }
+        async function selfRefreshOpenLoginMac() {
+            closeSystemSelect();
+            showToast('正在打开登录页 (Mac)...', 'info');
+            const result = await api('self_refresh_open_login', { system: 'mac' });
+            showToast(result.message, result.success ? 'success' : 'error');
+        }
+        async function selfRefreshOpenLoginWindows() {
+            closeSystemSelect();
+            showToast('正在打开登录页 (Windows)...', 'info');
+            const result = await api('self_refresh_open_login', { system: 'windows' });
+            showToast(result.message, result.success ? 'success' : 'error');
+        }
+        async function selfRefreshCopyEmail() {
+            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
+            const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
+            if (result.success && result.email) {
+                navigator.clipboard.writeText(result.email);
+                showToast('邮箱已复制到剪贴板', 'success');
+            } else {
+                showToast(result.message || '获取邮箱失败', 'error');
+            }
+        }
+        async function selfRefreshCopyPassword() {
+            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
+            const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
+            if (result.success && result.password) {
+                navigator.clipboard.writeText(result.password);
+                showToast('密码已复制到剪贴板', 'success');
+            } else {
+                showToast(result.message || '获取密码失败', 'error');
+            }
+        }
+        async function selfRefreshUpdateAccount() {
+            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
+            showToast('正在检查并更新账号...', 'info');
+            const result = await api('self_refresh_update_account', { key_id: currentRefreshKeyId });
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) { loadAccounts(); loadLoginStatus(); }
+        }
+        async function selfRefreshSubmitRequest() {
+            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
             showToast('正在提交申请...', 'info');
-            const result = await api('request_refresh', { key_id: keyId });
+            const result = await api('request_refresh', { key_id: currentRefreshKeyId });
             showToast(result.message, result.success ? 'success' : 'error');
         }
         loadAccounts();
         loadLoginStatus();
         loadCloudConfig();
         let autoRefreshTimer = null;
-        async function autoRefreshBalances() { await api('refresh_balances'); loadAccounts(); loadLoginStatus(); }
-        function startAutoRefresh() { setTimeout(async () => { await autoRefreshBalances(); autoRefreshTimer = setInterval(autoRefreshBalances, 60000); }, 3000); }
+        async function autoRefreshBalances() { 
+            try { 
+                await api('auto_refresh'); 
+                loadAccounts(); 
+            } catch(e) { console.error('Auto refresh error:', e); } 
+        }
+        function startAutoRefresh() { 
+            // 首次延迟10秒后执行，之后每5分钟刷新一次
+            setTimeout(async () => { 
+                await autoRefreshBalances(); 
+                autoRefreshTimer = setInterval(autoRefreshBalances, 300000); 
+            }, 10000); 
+        }
         startAutoRefresh();
         
         async function loadCloudConfig() {
@@ -951,7 +1880,7 @@ _H1='''<!DOCTYPE html>
                 ).join('');
                 document.getElementById('creditsContent').innerHTML = creditsHtml;
             }
-            // 更新购买链接
+            // 更新购买链接（只有配置了才显示）
             if (config.purchase_text) {
                 const link = document.getElementById('purchaseLink');
                 const url = config.purchase_url || '';
@@ -964,6 +1893,7 @@ _H1='''<!DOCTYPE html>
                     link.style.cursor = 'default';
                 }
                 link.textContent = config.purchase_text;
+                link.style.display = 'inline';  // 配置了才显示
             }
             // 更新联系方式
             if (config.contact) {
@@ -987,12 +1917,74 @@ _H1='''<!DOCTYPE html>
                         window.open(v.download_url || 'https://github.com/shone2025/shone-factory/releases/latest', '_blank');
                     }
                 } else {
-                    showToast('已是最新版本', 'success');
+                    showToast(result.message || '检查更新失败', 'error');
                 }
             } catch (e) {
-                showToast('检查更新失败', 'error');
+                showToast('检查更新失败: ' + e, 'error');
             }
         }
+        
+        // 自动切换功能
+        async function loadAutoSwitchStatus() {
+            const result = await api('get_auto_switch');
+            const enabled = result.auto_switch || false;
+            document.getElementById('autoSwitchToggle').checked = enabled;
+            document.getElementById('autoSwitchStatus').textContent = enabled ? '开启' : '关闭';
+            document.getElementById('autoSwitchStatus').style.color = enabled ? '#50fa7b' : '#6272a4';
+        }
+        async function toggleAutoSwitch() {
+            const enabled = document.getElementById('autoSwitchToggle').checked;
+            const result = await api('set_auto_switch', { enabled });
+            showToast(result.message, result.success ? 'success' : 'error');
+            document.getElementById('autoSwitchStatus').textContent = enabled ? '开启' : '关闭';
+            document.getElementById('autoSwitchStatus').style.color = enabled ? '#50fa7b' : '#6272a4';
+        }
+        async function switchToBest() {
+            showLoading('正在切换到最优账号...', 35000);
+            const result = await api('switch_best');
+            hideLoading();
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) { loadAccounts(); loadLoginStatus(); }
+        }
+        
+        // 删除已耗尽账号功能
+        let exhaustedAccounts = [];
+        async function showExhaustedAccounts() {
+            const result = await api('get_exhausted');
+            exhaustedAccounts = result.accounts || [];
+            const list = document.getElementById('exhaustedList');
+            if (exhaustedAccounts.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #50fa7b; padding: 20px;">🎉 没有已耗尽的账号</div>';
+            } else {
+                list.innerHTML = exhaustedAccounts.map(acc => 
+                    `<div class="exhausted-item">
+                        <input type="checkbox" class="exhaust-check" data-index="${acc.index}" checked>
+                        <span class="key-id">${acc.key_id}</span>
+                        <span style="margin-left: auto; color: #ff5555; font-size: 11px;">已耗尽</span>
+                    </div>`
+                ).join('');
+            }
+            document.getElementById('exhaustedModal').classList.add('active');
+        }
+        function closeExhaustedModal() {
+            document.getElementById('exhaustedModal').classList.remove('active');
+        }
+        async function confirmDeleteExhausted() {
+            const checks = document.querySelectorAll('.exhaust-check:checked');
+            const indices = Array.from(checks).map(c => parseInt(c.dataset.index));
+            if (indices.length === 0) {
+                showToast('请至少选择一个账号', 'error');
+                return;
+            }
+            if (!confirm(`确定要删除 ${indices.length} 个已耗尽账号吗？`)) return;
+            const result = await api('delete_exhausted', { indices });
+            showToast(result.message, result.success ? 'success' : 'error');
+            closeExhaustedModal();
+            if (result.success) loadAccounts();
+        }
+        
+        // 页面加载时初始化自动切换状态
+        loadAutoSwitchStatus();
     </script>
 </body>
 </html>
@@ -1021,13 +2013,27 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='switch':r=s._0m._0xswa(d.get('index',0))
                 elif ac=='delete':r=s._0m._0xda(d.get('index',0))
                 elif ac=='remark':r=s._0m._0xur(d.get('index',0),d.get('remark',''))
-                elif ac=='refresh':r=s._0m._0xrsa(d.get('index',0))
-                elif ac=='refresh_balances':s._0m._0xrab();r={"success":True,"message":"额度查询完成"}
+                elif ac=='refresh':r=s._0m._0xrsa(d.get('index',0),force_cloud=True)
+                elif ac=='refresh_balances':s._0m._0xrab(force_cloud=True);r={"success":True,"message":"额度查询完成"}
+                elif ac=='auto_refresh':s._0m._0xrab(force_cloud=False);r={"success":True,"message":"自动刷新完成"}
                 elif ac=='sync_login':r=s._0m._0xscl()
                 elif ac=='login_info':i=s._0m._0xgcli();r={"success":True,"info":i}
                 elif ac=='cloud_config':c=_0xGCF();r={"success":True,"config":c}if c else{"success":False}
                 elif ac=='check_version':r=_0xGVR()
                 elif ac=='request_refresh':r=_0xRRF(d.get('key_id',''))
+                elif ac=='self_refresh_clear_chrome':r=s._0m._0xSRCC()
+                elif ac=='self_refresh_cookie_login':r=s._0m._0xSRCL(d.get('key_id',''))
+                elif ac=='self_refresh_open_login':r=s._0m._0xSROL(d.get('system'))
+                elif ac=='get_account_region':r=s._0m._0xGAR(d.get('key_id',''))
+                elif ac=='self_refresh_get_credentials':r=s._0m._0xSRGC(d.get('key_id',''))
+                elif ac=='self_refresh_update_account':r=s._0m._0xSRUA(d.get('key_id',''))
+                elif ac=='switch_best':r=s._0m._0xsbo()
+                elif ac=='get_exhausted':r=s._0m._0xgex()
+                elif ac=='delete_exhausted':r=s._0m._0xdex(d.get('indices',[]))
+                elif ac=='get_auto_switch':r=s._0m._0xgas()
+                elif ac=='set_auto_switch':r=s._0m._0xsas(d.get('enabled',False))
+                elif ac=='renew_all_tokens':r=s._0m._0xrat(d.get('force_all',False))
+                elif ac=='ping':r={"success":True,"message":"pong","timestamp":time.time()}
                 else:r={"success":False,"message":"未知操作"}
                 s._0xsj(r)
             except Exception as e:s._0xsj({"success":False,"message":str(e)},500)
