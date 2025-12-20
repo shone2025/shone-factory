@@ -15,6 +15,173 @@ def is_sf_key(s):return False
 _CLOUD_URL='https://shone.ggff.net'
 _CLIENT_KEY='shonefactory_client_2024'
 
+# 设备唯一标识
+_DEVICE_ID = None
+_DEVICE_ID_FILE = Path(__file__).parent / '.device_id'
+
+def _get_mac_address():
+    """获取设备 MAC 地址"""
+    try:
+        mac = uuid.getnode()
+        # 格式化为标准 MAC 地址格式
+        mac_str = ':'.join(('%012x' % mac)[i:i+2] for i in range(0, 12, 2))
+        return mac_str
+    except:
+        return None
+
+def _generate_device_id():
+    """生成设备唯一标识"""
+    global _DEVICE_ID
+    
+    # 如果已有 ID，直接返回
+    if _DEVICE_ID:
+        return _DEVICE_ID
+    
+    # 尝试从文件读取
+    if _DEVICE_ID_FILE.exists():
+        try:
+            with open(_DEVICE_ID_FILE, 'r') as f:
+                data = json.load(f)
+                _DEVICE_ID = data.get('device_id')
+                if _DEVICE_ID:
+                    return _DEVICE_ID
+        except:
+            pass
+    
+    # 生成新的设备 ID
+    mac = _get_mac_address() or str(uuid.uuid4())
+    hostname = socket.gethostname()
+    system = platform.system()
+    
+    # 组合并哈希
+    raw = f"{mac}:{hostname}:{system}:{uuid.uuid4().hex[:8]}"
+    device_id = hashlib.sha256(raw.encode()).hexdigest()[:32]
+    device_id = f"SF-D-{device_id}"
+    
+    # 保存到文件
+    try:
+        with open(_DEVICE_ID_FILE, 'w') as f:
+            json.dump({
+                'device_id': device_id,
+                'mac': mac,
+                'hostname': hostname,
+                'system': system,
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }, f, indent=2)
+    except:
+        pass
+    
+    _DEVICE_ID = device_id
+    return device_id
+
+def _register_client():
+    """向云端注册客户端"""
+    device_id = _generate_device_id()
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        data = json.dumps({
+            'device_id': device_id,
+            'hostname': socket.gethostname(),
+            'system': platform.system(),
+            'version': '1.0'
+        }).encode('utf-8')
+        
+        req = urllib.request.Request(
+            f"{_CLOUD_URL}/api/client/register",
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Client-Key': _CLIENT_KEY
+            },
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        print(f"客户端注册失败: {e}")
+        return None
+
+def _send_heartbeat():
+    """发送心跳"""
+    device_id = _generate_device_id()
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        data = json.dumps({
+            'device_id': device_id
+        }).encode('utf-8')
+        
+        req = urllib.request.Request(
+            f"{_CLOUD_URL}/api/client/heartbeat",
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Client-Key': _CLIENT_KEY
+            },
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except:
+        return None
+
+def _get_share_info():
+    """获取分享信息"""
+    device_id = _generate_device_id()
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        req = urllib.request.Request(
+            f"{_CLOUD_URL}/api/client/share-info/{device_id}",
+            headers={
+                'X-Client-Key': _CLIENT_KEY
+            },
+            method='GET'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        print(f"获取分享信息失败: {e}")
+        return None
+
+def _report_sfkey_import(referrer_id=None):
+    """上报 SF-Key 导入（用于分享追踪）"""
+    device_id = _generate_device_id()
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        data = json.dumps({
+            'device_id': device_id,
+            'referrer_id': referrer_id
+        }).encode('utf-8')
+        
+        req = urllib.request.Request(
+            f"{_CLOUD_URL}/api/share/confirm-import",
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Client-Key': _CLIENT_KEY
+            },
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except:
+        return None
+
 def _0xGCF():
     """从云端获取客户端配置"""
     try:
@@ -838,6 +1005,30 @@ class _0xTM:
         s._0xsp(po)
         return{"success":True,"auto_switch":enabled,"message":f"自动切换已{'开启'if enabled else'关闭'}"}
 
+    def _0xGSI(s):
+        """获取分享信息"""
+        result = _get_share_info()
+        if result and result.get('success'):
+            device_id = _generate_device_id()
+            return {
+                "success": True,
+                "device_id": device_id,
+                "share_link": result.get('share_link', f"{_CLOUD_URL}/s/{device_id}"),
+                "share_count": result.get('share_count', 0),
+                "rewards": result.get('rewards', 0)
+            }
+        else:
+            # 如果云端获取失败，返回本地生成的链接
+            device_id = _generate_device_id()
+            return {
+                "success": True,
+                "device_id": device_id,
+                "share_link": f"{_CLOUD_URL}/s/{device_id}",
+                "share_count": 0,
+                "rewards": 0,
+                "message": "无法连接云端，显示本地信息"
+            }
+
     def _0xrat(s,force_all=False):
         """全部续期 - 使用 WorkOS API 刷新账号的 Token
         force_all: True=强制刷新所有账号, False=仅刷新即将过期或已过期的账号
@@ -900,8 +1091,37 @@ class _0xTM:
                             po['accounts'][i][_S3]=new_rt
                         # 解析新 token 的过期时间
                         new_pl=s._0xdj(new_at)
+                        new_exp=0
                         if new_pl:
-                            po['accounts'][i]['exp']=new_pl.get('exp',0)
+                            new_exp=new_pl.get('exp',0)
+                            po['accounts'][i]['exp']=new_exp
+                        
+                        # 【关键】刷新成功后同步新 token 到云端，确保其他设备能获取最新的 refresh_token
+                        sfkl1=a.get('sf_key_line1','')
+                        if sfkl1 and len(sfkl1)>=35:
+                            try:
+                                sfkey_id=sfkl1[:35]
+                                org_id=a.get('org_id','')
+                                sync_data=json.dumps({
+                                    "sfkey_id":sfkey_id,
+                                    "access_token":new_at,
+                                    "refresh_token":new_rt if new_rt else rt,
+                                    "email":a.get('email',''),
+                                    "exp":new_exp,
+                                    "org_id":org_id
+                                }).encode('utf-8')
+                                sync_req=urllib.request.Request(
+                                    f"{_CU}/api/update",
+                                    data=sync_data,
+                                    headers={'Content-Type':'application/json','X-API-Key':_AS},
+                                    method='POST'
+                                )
+                                ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+                                with urllib.request.urlopen(sync_req,timeout=10,context=ctx)as sync_resp:
+                                    pass  # 静默同步
+                            except:
+                                pass  # 同步失败不影响本地刷新结果
+                        
                         success_count+=1
                         status_msg="已过期->刷新成功" if is_expired else "刷新成功"
                         results.append({"key":ki,"status":"success","msg":status_msg})
@@ -1511,6 +1731,7 @@ _H1='''<!DOCTYPE html>
                 <span id="contactInfo">联系作者: haooicq@gmail.com</span>
                 <a href="#" target="_blank" id="purchaseLink" style="display:none;"></a>
                 <span style="color: #6272a4; font-size: 11px; cursor: pointer;" onclick="checkVersion()">🔄 检查更新</span>
+                <span style="color: #50fa7b; font-size: 11px; cursor: pointer; margin-left: 15px;" onclick="openShareModal()">🎁 分享有礼</span>
             </div>
         </div>
         <div class="card">
@@ -1518,26 +1739,79 @@ _H1='''<!DOCTYPE html>
             <div id="loginStatus" class="login-status">检测中...</div>
         </div>
         <div class="card">
-            <div class="card-title">账号池</div>
-            <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <button class="btn btn-secondary" onclick="loadAccounts()">刷新列表</button>
-                <button class="btn btn-info" onclick="syncFromCloud()">☁️ 云端同步</button>
-                <button class="btn btn-primary" onclick="refreshAllBalances()">💰 刷新额度</button>
-                <button class="btn btn-success" onclick="renewAllTokens()">🔄 全部续期</button>
-                <div style="display: flex; align-items: center; gap: 5px; margin-left: 15px; padding: 5px 10px; background: #1e1e2e; border-radius: 6px;">
-                    <span style="font-size: 12px; color: #8be9fd;">🔄 自动切换:</span>
-                    <label class="switch" style="position: relative; display: inline-block; width: 40px; height: 20px;">
-                        <input type="checkbox" id="autoSwitchToggle" onchange="toggleAutoSwitch()" style="opacity: 0; width: 0; height: 0;">
-                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #44475a; transition: .3s; border-radius: 20px;"></span>
+            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>账号池</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 11px; color: #6272a4;">🛡️ 刷新保护:</span>
+                    <label class="switch" style="position: relative; display: inline-block; width: 36px; height: 18px;">
+                        <input type="checkbox" id="refreshProtectToggle" checked onchange="toggleRefreshProtect()" style="opacity: 0; width: 0; height: 0;">
+                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #50fa7b; transition: .3s; border-radius: 18px;"></span>
                     </label>
-                    <span id="autoSwitchStatus" style="font-size: 11px; color: #6272a4;">关闭</span>
+                    <span id="refreshProtectStatus" style="font-size: 10px; color: #50fa7b;">开启</span>
                 </div>
-                <button class="btn" style="background: linear-gradient(135deg, #8be9fd, #50fa7b); color: #282a36;" onclick="switchToBest()">⚡ 手动切换最优</button>
-                <button class="btn btn-danger" onclick="showExhaustedAccounts()">🗑️ 删除已耗尽</button>
+            </div>
+            <div class="toolbar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 0;">
+                <button class="btn btn-secondary" style="font-size: 12px; padding: 8px 14px;" onclick="loadAccounts()">🔄 手动刷新</button>
+                <button class="btn" style="font-size: 12px; padding: 8px 14px; background: #8be9fd; color: #1e1e2e;" onclick="syncFromCloud()">☁️ 云端同步</button>
+                <button class="btn btn-primary" style="font-size: 12px; padding: 8px 14px;" onclick="refreshAllBalances()">💰 刷新额度</button>
+                <button class="btn btn-success" style="font-size: 12px; padding: 8px 14px;" onclick="renewAllTokens()">⏰ 全部续期</button>
+                <div style="display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 10px; background: #1e1e2e; border-radius: 6px;">
+                    <span style="font-size: 11px; color: #8be9fd;">🔁 自动切换:</span>
+                    <label class="switch" style="position: relative; display: inline-block; width: 36px; height: 18px;">
+                        <input type="checkbox" id="autoSwitchToggle" onchange="toggleAutoSwitch()" style="opacity: 0; width: 0; height: 0;">
+                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #44475a; transition: .3s; border-radius: 18px;"></span>
+                    </label>
+                    <span id="autoSwitchStatus" style="font-size: 10px; color: #6272a4;">关闭</span>
+                </div>
+            </div>
+            <div class="toolbar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-bottom: 10px; border-bottom: 1px solid #44475a;">
+                <button class="btn" style="font-size: 12px; padding: 8px 14px; background: linear-gradient(135deg, #8be9fd, #50fa7b); color: #1e1e2e;" onclick="switchToBest()">⚡ 切换最优</button>
+                <button class="btn btn-danger" style="font-size: 12px; padding: 8px 14px;" onclick="showExhaustedAccounts()">🗑️ 删除耗尽</button>
             </div>
             <div id="accountList"></div>
         </div>
     </div>
+    
+    <!-- 分享有礼模态框 -->
+    <div class="modal" id="shareModal">
+        <div class="modal-content" style="max-width: 480px;">
+            <h3 class="modal-title">🎁 分享有礼</h3>
+            <div style="background: linear-gradient(135deg, #1a1b26 0%, #24283b 100%); border-radius: 12px; padding: 20px; margin-bottom: 15px;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 24px; margin-bottom: 10px;">
+                        <span id="shareStars">⭐⭐⭐</span>
+                    </div>
+                    <div style="color: #7aa2f7; font-size: 14px;">
+                        有效分享: <span id="shareCount" style="color: #50fa7b; font-weight: bold;">0</span> 人
+                    </div>
+                </div>
+                <div style="background: #1e1e2e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                    <div style="color: #8be9fd; font-size: 12px; margin-bottom: 8px;">📋 您的专属分享链接:</div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="shareLink" readonly style="flex: 1; background: #2d3250; border: 1px solid #44475a; border-radius: 6px; color: #f8f8f2; padding: 8px; font-size: 11px;">
+                        <button class="btn btn-primary" onclick="copyShareLink()" style="padding: 8px 16px;">复制</button>
+                    </div>
+                </div>
+                <div style="color: #a9b1d6; font-size: 12px; line-height: 1.8;">
+                    <p style="margin-bottom: 8px;">📌 <b>分享规则:</b></p>
+                    <p>1. 分享链接给好友，好友下载并安装客户端</p>
+                    <p>2. 好友成功导入 SF-Key 即算有效分享</p>
+                    <p>3. 每满 3 个有效分享，获得 1 个奖励 Key ⭐</p>
+                    <p>4. 累计 10 个有效分享，解锁额外奖励 🎉</p>
+                </div>
+            </div>
+            <div style="background: #2d1f3d; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                <div style="color: #bd93f9; font-size: 12px;">
+                    <span>🏆 奖励进度: </span>
+                    <span id="rewardProgress">加载中...</span>
+                </div>
+            </div>
+            <div class="btn-row" style="justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeShareModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
     <div class="modal" id="renewModal">
         <div class="modal-content" style="max-width: 420px;">
             <h3 class="modal-title">🔄 全部续期</h3>
@@ -1784,7 +2058,7 @@ _H1='''<!DOCTYPE html>
                 setTimeout(() => syncFromCloud(), 500);
             }
             
-            let html = '<div class="table-wrapper"><table><thead><tr><th>#</th><th>Key 编号</th><th>状态</th><th>额度状态</th><th>剩余</th><th>使用率</th><th>备注</th><th>添加时间</th><th>操作</th></tr></thead><tbody>';
+            let html = '<div class="table-wrapper"><table><thead><tr><th style="width:40px;">#</th><th>Key 编号</th><th style="width:80px;">状态</th><th style="width:90px;">额度状态</th><th style="width:70px;">剩余</th><th style="width:70px;">使用率</th><th style="width:80px;">备注</th><th style="width:100px;">添加时间</th><th style="width:180px;">操作</th></tr></thead><tbody>';
             for (const acc of result.accounts) {
                 const statusClass = 'status-' + acc.status;
                 const statusIcon = acc.is_current ? '🟢' : (acc.status === 'valid' ? '✅' : (acc.status === 'refresh' ? '🔄' : (acc.status === 'pending' ? '⏳' : '❌')));
@@ -1794,13 +2068,15 @@ _H1='''<!DOCTYPE html>
                 const cachedTip = acc.cached && acc.last_updated ? ` title="缓存数据，更新于: ${acc.last_updated}"` : '';
                 const statusTip = acc.status === 'refresh' ? ' title="Token已过期，点击☁️云端同步获取最新数据"' : (acc.status === 'pending' ? ' title="待验证状态，请点击☁️云端同步获取数据"' : '');
                 const balanceTip = acc.balance_status === 'error' ? ' title="注意：查询失败并不代表key失效，如果key额度高于20%请在几小时后重新查询，在额度使用完之前，此提示并不影响使用"' : cachedTip;
-                // 状态为 refresh 或 pending 时显示同步按钮
-                const syncBtn = (acc.status === 'refresh' || acc.status === 'pending') ? `<button class="btn-request-refresh" onclick="syncFromCloud()" title="从云端同步最新数据">☁️ 同步</button>` : '';
-                const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn-request-refresh" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">📨 申请</button>` : '';
+                // 状态为 refresh 或 pending 时显示操作按钮
+                const syncBtn = (acc.status === 'refresh' || acc.status === 'pending') ? `<button class="btn btn-secondary action-btn" style="font-size:10px; padding:3px 6px;" onclick="syncFromCloud()" title="从云端同步最新数据">☁️同步</button>` : '';
+                const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn action-btn" style="font-size:10px; padding:3px 6px; background:#ffb86c; color:#1e1e2e;" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">📨申请</button>` : '';
                 const actionBtn = acc.is_current 
-                    ? '<span class="btn btn-success action-btn" style="cursor:default;opacity:0.8;">已登录</span>' 
-                    : `<button class="btn btn-success action-btn" onclick="switchAccount(${acc.index})">切换</button>`;
-                html += `<tr><td>${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${syncBtn}${refreshRequestBtn}${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td>${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
+                    ? '<span class="btn btn-success action-btn" style="cursor:default;opacity:0.8;font-size:11px;">已登录</span>' 
+                    : `<button class="btn btn-success action-btn" style="font-size:11px;" onclick="switchAccount(${acc.index})">切换</button>`;
+                // Key编号单元格只显示Key，按钮移到操作列
+                const extraActions = syncBtn + refreshRequestBtn;
+                html += `<tr><td style="text-align:center;">${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td style="font-size:11px;">${acc.added_at}</td><td style="white-space:nowrap;">${extraActions}${actionBtn}<button class="btn btn-secondary action-btn" style="font-size:11px;" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" style="font-size:11px;" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
             }
             html += '</tbody></table></div>';
             container.innerHTML = html;
@@ -2060,6 +2336,54 @@ _H1='''<!DOCTYPE html>
             }
         }
         
+        // 分享有礼功能
+        async function openShareModal() {
+            document.getElementById('shareModal').classList.add('active');
+            loadShareInfo();
+        }
+        
+        function closeShareModal() {
+            document.getElementById('shareModal').classList.remove('active');
+        }
+        
+        async function loadShareInfo() {
+            const result = await api('get_share_info');
+            if (result.success) {
+                const count = result.share_count || 0;
+                document.getElementById('shareCount').textContent = count;
+                document.getElementById('shareLink').value = result.share_link || '';
+                
+                // 显示星星
+                const stars = Math.floor(count / 3);
+                let starStr = '';
+                for (let i = 0; i < stars; i++) starStr += '⭐';
+                if (stars === 0) starStr = '☆☆☆';
+                document.getElementById('shareStars').textContent = starStr || '☆☆☆';
+                
+                // 奖励进度
+                const nextReward = 3 - (count % 3);
+                let progress = `已获得 ${stars} 个奖励 Key`;
+                if (count < 10) {
+                    progress += `，再邀请 ${nextReward} 人可获得下一个奖励`;
+                } else {
+                    progress += ' + 额外奖励已解锁 🎉';
+                }
+                document.getElementById('rewardProgress').textContent = progress;
+            } else {
+                showToast(result.message || '获取分享信息失败', 'error');
+            }
+        }
+        
+        async function copyShareLink() {
+            const link = document.getElementById('shareLink').value;
+            if (link) {
+                navigator.clipboard.writeText(link);
+                showToast('分享链接已复制到剪贴板', 'success');
+            } else {
+                showToast('分享链接为空', 'error');
+            }
+        }
+        
         // 自动切换功能
         async function loadAutoSwitchStatus() {
             const result = await api('get_auto_switch');
@@ -2121,6 +2445,34 @@ _H1='''<!DOCTYPE html>
         
         // 页面加载时初始化自动切换状态
         loadAutoSwitchStatus();
+        
+        // 刷新保护功能
+        let refreshProtectEnabled = true;
+        let autoRefreshInterval = null;
+        
+        function toggleRefreshProtect() {
+            refreshProtectEnabled = document.getElementById('refreshProtectToggle').checked;
+            const statusEl = document.getElementById('refreshProtectStatus');
+            
+            if (refreshProtectEnabled) {
+                statusEl.textContent = '开启';
+                statusEl.style.color = '#50fa7b';
+                document.getElementById('refreshProtectToggle').nextElementSibling.style.backgroundColor = '#50fa7b';
+                // 重新启动自动刷新
+                startAutoRefresh();
+                showToast('刷新保护已开启，页面将自动刷新', 'success');
+            } else {
+                statusEl.textContent = '关闭';
+                statusEl.style.color = '#ff5555';
+                document.getElementById('refreshProtectToggle').nextElementSibling.style.backgroundColor = '#ff5555';
+                // 停止自动刷新
+                if (autoRefreshTimer) {
+                    clearInterval(autoRefreshTimer);
+                    autoRefreshTimer = null;
+                }
+                showToast('刷新保护已关闭，页面不再自动刷新。点击"手动刷新"更新数据', 'info');
+            }
+        }
     </script>
 </body>
 </html>
@@ -2171,10 +2523,25 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='set_auto_switch':r=s._0m._0xsas(d.get('enabled',False))
                 elif ac=='renew_all_tokens':r=s._0m._0xrat(d.get('force_all',False))
                 elif ac=='ping':r={"success":True,"message":"pong","timestamp":time.time()}
+                elif ac=='get_share_info':r=s._0m._0xGSI()
+                elif ac=='get_device_id':r={"success":True,"device_id":_generate_device_id()}
                 else:r={"success":False,"message":"未知操作"}
                 s._0xsj(r)
             except Exception as e:s._0xsj({"success":False,"message":str(e)},500)
         else:s.send_response(404);s.end_headers()
+
+def _start_heartbeat_thread():
+    """启动心跳线程"""
+    def heartbeat_worker():
+        while True:
+            try:
+                _send_heartbeat()
+            except:
+                pass
+            time.sleep(300)  # 每5分钟发送一次心跳
+    
+    thread = threading.Thread(target=heartbeat_worker, daemon=True)
+    thread.start()
 
 def _0xM():
     _0xCHK()
@@ -2182,6 +2549,24 @@ def _0xM():
     print("  ShoneFactory Token Key - Web 版")
     print("="*50)
     print()
+    
+    # 生成设备ID并注册
+    device_id = _generate_device_id()
+    print(f"  设备ID: {device_id[:20]}...")
+    
+    # 注册到云端（异步，不阻塞启动）
+    def register_async():
+        try:
+            result = _register_client()
+            if result and result.get('success'):
+                print("  ✅ 客户端已注册到云端")
+        except:
+            pass
+    threading.Thread(target=register_async, daemon=True).start()
+    
+    # 心跳线程已关闭（用于测试）
+    # _start_heartbeat_thread()
+    
     sv=HTTPServer((_H0,_P0),_0xRH);url=f"http://{_H0}:{_P0}"
     print(f"  服务已启动: {url}")
     print();print("  正在打开浏览器...");print();print("  按 Ctrl+C 停止服务");print()
