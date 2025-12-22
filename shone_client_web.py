@@ -2227,7 +2227,7 @@ _H1='''<!DOCTYPE html>
                 <div class="paste-left">
                     <textarea id="tokenInput" placeholder="在此粘贴您的 SF-Key Token..."></textarea>
                     <div class="hint-row">
-                        <p class="hint hint-orange">首次导入奖励：1000万额度</p>
+                        <p class="hint hint-orange">点击导入1000万额度</p>
                     </div>
                     <div class="btn-row">
                         <button class="btn btn-secondary" onclick="clearInput()">✕ 清空</button>
@@ -2540,7 +2540,7 @@ _H1='''<!DOCTYPE html>
                 on: 'On',
                 off: 'Off',
                 // 提示信息
-                firstImportBonus: 'First import bonus: 10M quota',
+                firstImportBonus: 'Click to import 10M quota',
                 checkUpdate: 'Check Update',
                 shareEarn: 'Share & Earn',
                 contact: 'Contact:',
@@ -2673,7 +2673,7 @@ _H1='''<!DOCTYPE html>
                 on: '开启',
                 off: '关闭',
                 // 提示信息
-                firstImportBonus: '首次添加满1000万额度',
+                firstImportBonus: '点击导入1000万额度',
                 checkUpdate: '检查更新',
                 shareEarn: '分享有礼',
                 contact: '联系作者:',
