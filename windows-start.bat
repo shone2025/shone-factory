@@ -2,23 +2,34 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-REM Check Python and run launcher
+echo ========================================
+echo   SFK Token Manager - Starting...
+echo ========================================
+echo.
+
+REM Check Python and run
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    python launcher.py
+    python shone_client_web.py
+    if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo   [ERROR] Script execution failed
+        pause
+    )
     goto :end
 )
 
 where python3 >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    python3 launcher.py
+    python3 shone_client_web.py
+    if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo   [ERROR] Script execution failed
+        pause
+    )
     goto :end
 )
 
-echo ========================================
-echo   ShoneFactory Token Key
-echo ========================================
-echo.
 echo   [ERROR] Python not found
 echo.
 echo   Please install Python 3.8+
