@@ -2255,7 +2255,7 @@ _H1='''<!DOCTYPE html>
             </div>
         </div>
         <div class="card">
-            <div class="card-title">当前会话</div>
+            <div class="card-title">当前账号</div>
             <div id="loginStatus" class="login-status">检测中...</div>
         </div>
         <div class="card">
@@ -2270,12 +2270,11 @@ _H1='''<!DOCTYPE html>
                     <span id="refreshProtectStatus" style="font-size: 9px; color: var(--accent-green);">开启</span>
                 </div>
             </div>
-            <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 16px 0;">
+            <div class="toolbar" style="display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; padding: 16px 0;">
                 <button id="btnRefresh" class="btn btn-secondary" onclick="loadAccounts()">⟳ 刷新</button>
-                <button id="btnCloudSync" class="btn btn-secondary" onclick="syncFromCloud()">☁ 云端同步</button>
-                <button id="btnQueryBalance" class="btn btn-secondary" onclick="refreshAllBalances()">◎ 查询额度</button>
-                <button id="btnRenewAll" class="btn btn-secondary" onclick="renewAllTokens()">↻ 全部续期</button>
                 <button id="btnTicket" class="btn btn-secondary" onclick="openTicketModal()">📋 工单</button>
+                <button id="btnSwitchBest" class="btn btn-secondary" onclick="switchToBest()">★ 切换最优</button>
+                <button id="btnDeleteExhausted" class="btn btn-secondary" onclick="openDeleteExhaustedModal()">✕ 删除耗尽</button>
                 <div style="display: flex; align-items: center; gap: 8px; margin-left: auto; padding: 8px 16px; background: var(--bg-secondary); border: 1px solid var(--border-color);">
                     <span id="autoSwitchLabel" style="font-size: 10px; color: var(--text-secondary);">自动切换:</span>
                     <label class="switch" style="position: relative; display: inline-block; width: 36px; height: 18px;">
@@ -2285,10 +2284,7 @@ _H1='''<!DOCTYPE html>
                     <span id="autoSwitchStatus" style="font-size: 9px; color: var(--text-muted);">关闭</span>
                 </div>
             </div>
-            <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);">
-                <button id="btnSwitchBest" class="btn btn-secondary" onclick="switchToBest()">★ 切换最优</button>
-                <button id="btnRemoveExhausted" class="btn btn-secondary" onclick="showExhaustedAccounts()">✕ 删除耗尽</button>
-            </div>
+
             <div id="accountList"></div>
         </div>
     </div>
@@ -2499,7 +2495,7 @@ _H1='''<!DOCTYPE html>
                 // 卡片标题
                 importKey: 'Import Key',
                 credits: 'Credits',
-                currentSession: 'Current Session',
+                currentSession: 'Current Account',
                 accountPool: 'Account Pool',
                 // 按钮
                 clear: 'Clear',
@@ -2632,7 +2628,7 @@ _H1='''<!DOCTYPE html>
                 // 卡片标题
                 importKey: '导入密钥',
                 credits: '致谢',
-                currentSession: '当前登录状态',
+                currentSession: '当前账号',
                 accountPool: '账号池',
                 // 按钮
                 clear: '清空',
@@ -2801,11 +2797,8 @@ _H1='''<!DOCTYPE html>
             
             // 工具栏按钮
             document.getElementById('btnRefresh').textContent = '⟳ ' + t('refresh');
-            document.getElementById('btnCloudSync').textContent = '☁ ' + t('cloudSync');
-            document.getElementById('btnQueryBalance').textContent = '◎ ' + t('queryBalance');
-            document.getElementById('btnRenewAll').textContent = '↻ ' + t('renewAll');
             document.getElementById('btnSwitchBest').textContent = '★ ' + t('switchBest');
-            document.getElementById('btnRemoveExhausted').textContent = '✕ ' + t('removeExhausted');
+            document.getElementById('btnDeleteExhausted').textContent = '✕ ' + t('removeExhausted');
             document.getElementById('autoSwitchLabel').textContent = t('autoSwitch') + ':';
             
             // Self Refresh模态框
@@ -3239,11 +3232,27 @@ _H1='''<!DOCTYPE html>
             } catch(e) { console.error('Auto refresh error:', e); } 
         }
         function startAutoRefresh() { 
-            // 首次延迟10秒后执行，之后每5分钟刷新一次
+            // 首次延迟10秒后执行，之后每10分钟自动刷新额度和续期
             setTimeout(async () => { 
                 await autoRefreshBalances(); 
-                autoRefreshTimer = setInterval(autoRefreshBalances, 300000); 
+                await autoRenewTokens();
+                autoRefreshTimer = setInterval(async () => {
+                    await autoRefreshBalances();
+                    await autoRenewTokens();
+                }, 600000); // 10分钟
             }, 10000); 
+        }
+        // 自动续期：静默刷新过期的账号
+        async function autoRenewTokens() {
+            try {
+                const result = await api('renew_all_tokens', { force_all: false });
+                if (result.success && result.success_count > 0) {
+                    console.log('[自动续期] 已刷新', result.success_count, '个账号');
+                    loadAccounts();
+                }
+            } catch (e) {
+                console.log('[自动续期] 执行失败:', e);
+            }
         }
         startAutoRefresh();
         
