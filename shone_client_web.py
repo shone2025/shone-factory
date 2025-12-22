@@ -363,6 +363,124 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
     print(f"云端上传异常(重试{retry}次后): {last_err}")
     return {"success":False,"message":last_err}
 
+# 工单系统本地存储
+_TICKET_STORAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.sf_tickets.json')
+
+def _load_local_tickets():
+    """加载本地存储的工单ID列表"""
+    try:
+        if os.path.exists(_TICKET_STORAGE_FILE):
+            with open(_TICKET_STORAGE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except:
+        pass
+    return []
+
+def _save_local_tickets(ticket_ids):
+    """保存工单ID到本地"""
+    try:
+        with open(_TICKET_STORAGE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(ticket_ids, f)
+    except Exception as e:
+        print(f"保存工单记录失败: {e}")
+
+def _0xSTK(ticket_data):
+    """提交工单到云端"""
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        device_id = _generate_device_id()
+        ts = str(int(time.time()))
+        
+        # 准备客户端信息
+        client_info = {
+            "device_id": device_id,
+            "platform": platform.system(),
+            "version": "1.0.0"
+        }
+        
+        data = json.dumps({
+            "ticket_id": ticket_data.get('ticket_id', ''),
+            "type": ticket_data.get('type', 'other'),
+            "description": ticket_data.get('description', ''),
+            "contact": ticket_data.get('contact', ''),
+            "client_info": client_info,
+            "logs": ticket_data.get('logs', '')
+        }).encode('utf-8')
+        
+        req = urllib.request.Request(
+            f"{_CLOUD_URL}/api/feedback",
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Client-Key': _CLIENT_KEY,
+                'X-Timestamp': ts
+            },
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            if result.get('success'):
+                # 保存工单ID到本地
+                local_tickets = _load_local_tickets()
+                ticket_id = ticket_data.get('ticket_id', '')
+                if ticket_id and ticket_id not in local_tickets:
+                    local_tickets.append(ticket_id)
+                    _save_local_tickets(local_tickets)
+            return result
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else ''
+        try:
+            err_json = json.loads(error_body)
+            return {"success": False, "message": err_json.get('message', f'HTTP {e.code}')}
+        except:
+            return {"success": False, "message": f"提交失败: HTTP {e.code}"}
+    except Exception as e:
+        return {"success": False, "message": f"提交失败: {str(e)}"}
+
+def _0xGMT():
+    """获取我的工单列表"""
+    try:
+        local_tickets = _load_local_tickets()
+        if not local_tickets:
+            return {"success": True, "tickets": []}
+        
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        ts = str(int(time.time()))
+        data = json.dumps({"ticket_ids": local_tickets}).encode('utf-8')
+        
+        req = urllib.request.Request(
+            f"{_CLOUD_URL}/api/feedback/my",
+            data=data,
+            headers={
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Client-Key': _CLIENT_KEY,
+                'X-Timestamp': ts
+            },
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            return result
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else ''
+        try:
+            err_json = json.loads(error_body)
+            return {"success": False, "message": err_json.get('message', f'HTTP {e.code}'), "tickets": []}
+        except:
+            return {"success": False, "message": f"查询失败: HTTP {e.code}", "tickets": []}
+    except Exception as e:
+        return {"success": False, "message": f"查询失败: {str(e)}", "tickets": []}
+
 _0xT=time.time()
 _0xCORE=None
 
@@ -1622,312 +1740,739 @@ _H1='''<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShoneFactory Token Key</title>
+    <title>SFK | Token Manager</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #1e1e2e 0%, #2d2d3a 100%);
-            min-height: 100vh;
-            color: #f8f8f2;
-            padding: 20px;
+        :root {
+            --bg-primary: #0d0d0d;
+            --bg-secondary: #111;
+            --bg-card: #111;
+            --border-color: #2a2a2a;
+            --border-highlight: #e07a3c;
+            --text-primary: #e0e0e0;
+            --text-secondary: #999;
+            --text-muted: #666;
+            --accent-gold: #e07a3c;
+            --accent-orange: #e07a3c;
+            --accent-green: #28a745;
+            --accent-red: #dc3545;
+            --accent-blue: #3b82f6;
+            --accent-yellow: #e07a3c;
+            --accent-purple: #8b5cf6;
         }
-        .container { max-width: 1200px; width: 95%; margin: 0 auto; }
-        h1 { text-align: center; color: #bd93f9; margin-bottom: 30px; font-size: 28px; }
-        .card { background: #282a36; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); }
-        .card-title { color: #bd93f9; font-size: 16px; font-weight: bold; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #44475a; }
-        textarea { width: 100%; height: 100px; background: #1e1e2e; border: 1px solid #44475a; border-radius: 8px; color: #f8f8f2; padding: 12px; font-family: monospace; font-size: 13px; resize: vertical; }
-        textarea:focus { outline: none; border-color: #bd93f9; }
-        .hint { color: #6272a4; font-size: 13px; margin-top: 8px; }
-        .hint-orange { color: #ffb86c; }
-        .btn-row { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
-        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
-        .btn:hover { transform: translateY(-1px); }
-        .btn-primary { background: #bd93f9; color: #1e1e2e; }
-        .btn-primary:hover { background: #caa4ff; }
-        .btn-secondary { background: #44475a; color: #f8f8f2; }
-        .btn-secondary:hover { background: #565970; }
-        .btn-danger { background: #ff5555; color: #fff; }
-        .btn-danger:hover { background: #ff6e6e; }
-        .btn-success { background: #50fa7b; color: #1e1e2e; }
-        .btn-success:hover { background: #6bfb8f; }
-        .info-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
-        .info-row a { color: #8be9fd; text-decoration: none; }
+        body {
+            font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+            background: var(--bg-primary);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 0;
+            line-height: 1.6;
+            font-size: 13px;
+        }
+        .top-bar {
+            background: transparent;
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .top-bar h1 {
+            font-size: 12px;
+            font-weight: 400;
+            letter-spacing: 3px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            flex: 1;
+            text-align: center;
+        }
+        .lang-switch {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 6px 12px;
+            font-family: inherit;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 1px;
+            border-radius: 2px;
+        }
+        .lang-switch:hover {
+            border-color: var(--accent-orange);
+            color: var(--accent-orange);
+        }
+        .container { max-width: 1200px; width: 100%; margin: 0 auto; padding: 40px 20px; }
+        .page-header {
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .page-header h2 {
+            font-size: 24px;
+            font-weight: 400;
+            color: #fff;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        .page-header .subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+        }
+        .card {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 24px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .card::before {
+            display: none;
+        }
+        .card-title {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 12px;
+            font-family: inherit;
+            font-size: 12px;
+            resize: none;
+            transition: border-color 0.2s;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-orange);
+        }
+        textarea::placeholder { color: var(--text-muted); }
+        .hint { color: var(--text-muted); font-size: 11px; margin-top: 8px; }
+        .hint-orange { color: var(--accent-orange); font-weight: 500; }
+        .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+        .btn {
+            padding: 10px 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            border-color: var(--accent-orange);
+            color: #fff;
+        }
+        .btn-primary {
+            background: var(--accent-orange);
+            color: var(--bg-primary);
+            border-color: var(--accent-orange);
+            font-weight: 500;
+        }
+        .btn-primary:hover {
+            background: #f08a4c;
+            border-color: #f08a4c;
+            color: var(--bg-primary);
+        }
+        .btn-secondary { 
+            background: var(--bg-secondary); 
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+        .btn-secondary:hover {
+            background: var(--border-color);
+            border-color: var(--accent-orange);
+            color: var(--text-primary);
+        }
+        .btn-danger {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+        .btn-danger:hover {
+            background: var(--accent-red);
+            color: var(--bg-primary);
+        }
+        .btn-success {
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+        .btn-success:hover {
+            background: var(--accent-green);
+            color: var(--bg-primary);
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+        .info-row a { color: var(--accent-orange); text-decoration: none; font-size: 11px; }
         .info-row a:hover { text-decoration: underline; }
-        .info-row span { color: #6272a4; font-size: 13px; }
-        .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table { width: 100%; border-collapse: collapse; min-width: 900px; }
-        th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #44475a; white-space: nowrap; }
-        th { color: #bd93f9; font-weight: 600; font-size: 13px; }
-        td { font-size: 13px; }
-        tr:hover { background: #2d2d44; }
-        .status-current { color: #50fa7b; }
-        .status-valid { color: #8be9fd; }
-        .status-expired { color: #ff5555; }
-        .status-refresh { color: #f1fa8c; }
-        .status-pending { color: #6272a4; }
-        .balance-good { color: #50fa7b; }
-        .balance-medium { color: #f1fa8c; }
-        .balance-low { color: #ffb86c; }
-        .balance-exhausted { color: #ff5555; }
-        .balance-error { color: #ff5555; }
-        .balance-pending { color: #6272a4; }
-        .balance-estimated { color: #bd93f9; font-style: italic; }
-        .cached-badge { font-size: 10px; color: #ffb86c; margin-left: 4px; }
-        .action-btn { padding: 5px 10px; font-size: 12px; margin-right: 5px; }
-        .btn-request-refresh { display: block; background: linear-gradient(135deg, #ff79c6, #bd93f9); border: none; color: #fff; padding: 3px 8px; font-size: 10px; border-radius: 4px; cursor: pointer; margin-bottom: 4px; transition: all 0.2s; }
-        .btn-request-refresh:hover { background: linear-gradient(135deg, #ff92d0, #caa8ff); transform: scale(1.05); }
-        .toast { position: fixed; top: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; color: #fff; font-weight: 500; z-index: 1000; animation: slideIn 0.3s ease; }
-        .toast-success { background: #50fa7b; color: #1e1e2e; }
-        .toast-error { background: #ff5555; }
-        .toast-info { background: #8be9fd; color: #1e1e2e; }
+        .info-row span { color: var(--text-muted); font-size: 11px; cursor: pointer; }
+        .info-row span:hover { color: var(--accent-orange); }
+        .table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        th, td {
+            padding: 12px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+        th {
+            color: var(--text-muted);
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            background: var(--bg-secondary);
+            text-transform: uppercase;
+            font-size: 10px;
+        }
+        td { color: var(--text-primary); }
+        tr:hover td { background: rgba(224,122,60,0.05); }
+        .status-current { color: var(--accent-green); font-weight: 600; }
+        .status-valid { color: var(--accent-blue); }
+        .status-expired { color: var(--accent-red); }
+        .status-refresh { color: var(--accent-gold); }
+        .status-pending { color: var(--text-muted); }
+        .balance-good { color: var(--accent-green); font-weight: 500; }
+        .balance-medium { color: var(--accent-gold); }
+        .balance-low { color: var(--accent-orange); }
+        .balance-exhausted { color: var(--accent-red); }
+        .balance-error { color: var(--accent-red); }
+        .balance-pending { color: var(--text-muted); }
+        .balance-estimated { color: var(--accent-purple); font-style: italic; }
+        .cached-badge { font-size: 10px; color: var(--accent-orange); margin-left: 4px; }
+        
+        /* 滚动条 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+        .action-btn {
+            padding: 6px 12px;
+            font-size: 11px;
+            margin-right: 6px;
+            border-radius: 4px;
+        }
+        .btn-request-refresh {
+            display: inline-block;
+            background: transparent;
+            border: 1px solid var(--accent-purple);
+            color: var(--accent-purple);
+            padding: 4px 8px;
+            font-size: 9px;
+            cursor: pointer;
+            margin-bottom: 4px;
+            transition: all 0.2s;
+            border-radius: 2px;
+        }
+        .btn-request-refresh:hover {
+            background: var(--accent-purple);
+            color: var(--bg-primary);
+        }
+        .toast {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            padding: 12px 20px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 12px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            border-radius: 4px;
+        }
+        .toast-success { border-color: var(--accent-green); color: var(--accent-green); background: var(--bg-primary); }
+        .toast-error { border-color: var(--accent-red); color: var(--accent-red); background: var(--bg-primary); }
+        .toast-info { border-color: var(--accent-orange); color: var(--accent-orange); background: var(--bg-primary); }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 999; justify-content: center; align-items: center; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+        }
         .modal.active { display: flex; }
-        .modal-content { background: #282a36; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; }
-        .modal-title { color: #bd93f9; margin-bottom: 15px; }
-        .modal input, .modal textarea { width: 100%; margin-bottom: 15px; }
-        .modal input { background: #1e1e2e; border: 1px solid #44475a; border-radius: 6px; color: #f8f8f2; padding: 10px; }
-        .empty-state { text-align: center; padding: 40px; color: #6272a4; }
-        .login-status { padding: 15px; border-radius: 8px; background: #1e1e2e; }
-        .login-status .status-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-        .login-status .user-info { display: flex; align-items: center; gap: 10px; }
-        .login-status .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .login-status .badge-active { background: #50fa7b; color: #1e1e2e; }
-        .login-status .badge-expired { background: #ff5555; color: #fff; }
-        .login-status .badge-none { background: #6272a4; color: #fff; }
-        .login-status .badge-synced { background: #8be9fd; color: #1e1e2e; }
-        .toolbar { margin-bottom: 15px; }
-        .paste-section { display: flex; gap: 20px; }
-        .paste-left { flex: 0 0 auto; display: flex; flex-direction: column; }
-        .paste-left textarea { width: 580px; height: 200px; resize: none; }
+        .modal-content {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 32px;
+            width: 90%;
+            max-width: 480px;
+            border-radius: 4px;
+        }
+        .modal-title {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 400;
+            margin-bottom: 24px;
+            letter-spacing: 1px;
+        }
+        .modal input, .modal textarea {
+            width: 100%;
+            margin-bottom: 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 12px;
+            font-family: inherit;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        .modal input:focus, .modal textarea:focus {
+            outline: none;
+            border-color: var(--accent-orange);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+        .login-status {
+            padding: 16px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        .login-status .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .login-status .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .login-status .status-badge {
+            padding: 4px 12px;
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border: 1px solid;
+        }
+        .login-status .badge-active {
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+        .login-status .badge-expired {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+        .login-status .badge-none {
+            border-color: var(--text-muted);
+            color: var(--text-muted);
+        }
+        .login-status .badge-synced {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+        .toolbar { margin-bottom: 20px; }
+        .paste-section { display: flex; gap: 24px; }
+        .paste-left { flex: 0 0 580px; display: flex; flex-direction: column; }
+        .paste-left textarea { height: 180px; }
         .paste-right { flex: 1; display: flex; flex-direction: column; }
-        .credits-box { background: #1e1e2e; border: 1px solid #44475a; border-radius: 8px; padding: 15px; height: 100%; min-height: 200px; }
-        .credits-title { color: #bd93f9; font-size: 14px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #44475a; }
-        .credits-item { color: #8be9fd; font-size: 13px; margin-bottom: 8px; }
-        .hint-row { display: flex; gap: 20px; margin-top: 8px; }
-        .loading { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .credits-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            height: 100%;
+            min-height: 180px;
+        }
+        .credits-title {
+            color: var(--text-muted);
+            font-size: 10px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .credits-item { color: var(--text-secondary); font-size: 11px; margin-bottom: 8px; }
+        .hint-row { display: flex; gap: 20px; margin-top: 12px; }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
         .loading.active { display: flex; }
-        .loading-content { background: #282a36; padding: 30px; border-radius: 12px; text-align: center; min-width: 200px; }
-        .progress-ring { width: 80px; height: 80px; margin: 0 auto 15px; position: relative; }
+        .loading-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 40px;
+            text-align: center;
+            min-width: 240px;
+        }
+        .progress-ring { width: 80px; height: 80px; margin: 0 auto 20px; position: relative; }
         .progress-ring svg { transform: rotate(-90deg); }
-        .progress-ring circle { fill: none; stroke-width: 6; }
-        .progress-ring .bg { stroke: #44475a; }
-        .progress-ring .progress { stroke: #bd93f9; stroke-linecap: round; transition: stroke-dashoffset 0.3s; }
-        .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px; font-weight: bold; color: #bd93f9; }
-        .loading-message { color: #f8f8f2; font-size: 14px; margin-top: 10px; }
-        .spinner { border: 4px solid #44475a; border-top: 4px solid #bd93f9; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        .progress-ring circle { fill: none; stroke-width: 4; }
+        .progress-ring .bg { stroke: var(--border-color); }
+        .progress-ring .progress { stroke: var(--accent-orange); stroke-linecap: round; transition: stroke-dashoffset 0.3s; }
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--accent-orange);
+        }
+        .loading-message { color: var(--text-secondary); font-size: 11px; margin-top: 12px; letter-spacing: 1px; }
+        .spinner {
+            border: 2px solid var(--border-color);
+            border-top: 2px solid var(--accent-orange);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .switch input:checked + .slider { background-color: #50fa7b; }
-        .switch .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        .switch input:checked + .slider { background-color: var(--accent-green); }
+        .switch .slider {
+            background: var(--border-color);
+        }
+        .switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-primary);
+            transition: .3s;
+            border-radius: 50%;
+        }
         .switch input:checked + .slider:before { transform: translateX(20px); }
-        .exhausted-list { max-height: 300px; overflow-y: auto; margin: 15px 0; }
-        .exhausted-item { display: flex; align-items: center; padding: 10px; background: #1e1e2e; border-radius: 6px; margin-bottom: 8px; }
-        .exhausted-item input { margin-right: 10px; }
-        .exhausted-item .key-id { font-family: monospace; font-size: 12px; color: #ff5555; }
+        .exhausted-list { max-height: 300px; overflow-y: auto; margin: 20px 0; }
+        .exhausted-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            margin-bottom: 8px;
+        }
+        .exhausted-item input { margin-right: 12px; }
+        .exhausted-item .key-id { font-size: 11px; color: var(--accent-red); }
+        @media (max-width: 768px) {
+            .container { padding: 20px; }
+            .paste-section { flex-direction: column; }
+            .paste-left { flex: 1; }
+            .paste-left textarea { width: 100%; }
+        }
     </style>
 </head>
 <body>
+    <div class="top-bar">
+        <h1>SFK</h1>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
+            <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
+        </div>
+    </div>
     <div class="container">
-        <h1>ShoneFactory Token Key</h1>
+        <div class="page-header">
+            <h2>密钥管理器</h2>
+            <p class="subtitle">SF-Key 账号池管理系统</p>
+        </div>
         <div class="card">
-            <div class="card-title">粘贴 Key</div>
+            <div class="card-title">导入密钥</div>
             <div class="paste-section">
                 <div class="paste-left">
-                    <textarea id="tokenInput" placeholder="粘贴完整的 SF-Key Token..."></textarea>
+                    <textarea id="tokenInput" placeholder="在此粘贴您的 SF-Key Token..."></textarea>
                     <div class="hint-row">
-                        <p class="hint hint-orange">首次添加满1000万额度</p>
+                        <p class="hint hint-orange">首次导入奖励：1000万额度</p>
                     </div>
                     <div class="btn-row">
-                        <button class="btn btn-secondary" onclick="clearInput()">清空输入</button>
-                        <button class="btn btn-primary" onclick="addToken()">点击添加</button>
+                        <button class="btn btn-secondary" onclick="clearInput()">✕ 清空</button>
+                        <button class="btn btn-secondary" onclick="addToken()">↵ 导入</button>
                     </div>
                 </div>
                 <div class="paste-right">
                     <div class="credits-box">
-                        <div class="credits-title">致谢</div>
+                        <div class="credits-title">开发者</div>
                         <div id="creditsContent">
-                            <div class="credits-item">前端程序员：YO！</div>
-                            <div class="credits-item">后端程序员：bingw</div>
+                            <div class="credits-item">前端程序员: YO!</div>
+                            <div class="credits-item">后端程序员: bingw</div>
                         </div>
-                        <div id="announcementBox" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #44475a; display: none;">
-                            <div style="color: #ffb86c; font-size: 12px;" id="announcementText"></div>
+                        <div id="announcementBox" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); display: none;">
+                            <div style="color: var(--accent-orange); font-size: 11px;" id="announcementText"></div>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="info-row">
-                <span id="contactInfo">联系作者: haooicq@gmail.com</span>
+                <span id="contactInfo">联系方式: haooicq@gmail.com</span>
                 <a href="#" target="_blank" id="purchaseLink" style="display:none;"></a>
-                <span style="color: #6272a4; font-size: 11px; cursor: pointer;" onclick="checkVersion()">🔄 检查更新</span>
-                <span style="color: #50fa7b; font-size: 11px; cursor: pointer; margin-left: 15px;" onclick="openShareModal()">🎁 分享有礼</span>
+                <span id="checkUpdateBtn" style="cursor: pointer;" onclick="checkVersion()">检查更新</span>
+                <span id="shareEarnBtn" style="color: var(--accent-green); cursor: pointer;" onclick="openShareModal()">分享赚积分</span>
             </div>
         </div>
         <div class="card">
-            <div class="card-title">当前登录状态</div>
+            <div class="card-title">当前会话</div>
             <div id="loginStatus" class="login-status">检测中...</div>
         </div>
         <div class="card">
-            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="card-title">
                 <span>账号池</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 11px; color: #6272a4;">🛡️ 刷新保护:</span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span id="refreshGuardLabel" style="font-size: 10px; color: var(--text-muted);">刷新保护:</span>
                     <label class="switch" style="position: relative; display: inline-block; width: 36px; height: 18px;">
                         <input type="checkbox" id="refreshProtectToggle" checked onchange="toggleRefreshProtect()" style="opacity: 0; width: 0; height: 0;">
-                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #50fa7b; transition: .3s; border-radius: 18px;"></span>
+                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--accent-green); transition: .3s; border-radius: 18px;"></span>
                     </label>
-                    <span id="refreshProtectStatus" style="font-size: 10px; color: #50fa7b;">开启</span>
+                    <span id="refreshProtectStatus" style="font-size: 9px; color: var(--accent-green);">开启</span>
                 </div>
             </div>
-            <div class="toolbar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 0;">
-                <button class="btn btn-secondary" style="font-size: 12px; padding: 8px 14px;" onclick="loadAccounts()">🔄 手动刷新</button>
-                <button class="btn" style="font-size: 12px; padding: 8px 14px; background: #8be9fd; color: #1e1e2e;" onclick="syncFromCloud()">☁️ 云端同步</button>
-                <button class="btn btn-primary" style="font-size: 12px; padding: 8px 14px;" onclick="refreshAllBalances()">💰 刷新额度</button>
-                <button class="btn btn-success" style="font-size: 12px; padding: 8px 14px;" onclick="renewAllTokens()">⏰ 全部续期</button>
-                <div style="display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 10px; background: #1e1e2e; border-radius: 6px;">
-                    <span style="font-size: 11px; color: #8be9fd;">🔁 自动切换:</span>
+            <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 16px 0;">
+                <button id="btnRefresh" class="btn btn-secondary" onclick="loadAccounts()">⟳ 刷新</button>
+                <button id="btnCloudSync" class="btn btn-secondary" onclick="syncFromCloud()">☁ 云端同步</button>
+                <button id="btnQueryBalance" class="btn btn-secondary" onclick="refreshAllBalances()">◎ 查询额度</button>
+                <button id="btnRenewAll" class="btn btn-secondary" onclick="renewAllTokens()">↻ 全部续期</button>
+                <button id="btnTicket" class="btn btn-secondary" onclick="openTicketModal()">📋 工单</button>
+                <div style="display: flex; align-items: center; gap: 8px; margin-left: auto; padding: 8px 16px; background: var(--bg-secondary); border: 1px solid var(--border-color);">
+                    <span id="autoSwitchLabel" style="font-size: 10px; color: var(--text-secondary);">自动切换:</span>
                     <label class="switch" style="position: relative; display: inline-block; width: 36px; height: 18px;">
                         <input type="checkbox" id="autoSwitchToggle" onchange="toggleAutoSwitch()" style="opacity: 0; width: 0; height: 0;">
-                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #44475a; transition: .3s; border-radius: 18px;"></span>
+                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-color); transition: .3s; border-radius: 18px;"></span>
                     </label>
-                    <span id="autoSwitchStatus" style="font-size: 10px; color: #6272a4;">关闭</span>
+                    <span id="autoSwitchStatus" style="font-size: 9px; color: var(--text-muted);">关闭</span>
                 </div>
             </div>
-            <div class="toolbar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-bottom: 10px; border-bottom: 1px solid #44475a;">
-                <button class="btn" style="font-size: 12px; padding: 8px 14px; background: linear-gradient(135deg, #8be9fd, #50fa7b); color: #1e1e2e;" onclick="switchToBest()">⚡ 切换最优</button>
-                <button class="btn btn-danger" style="font-size: 12px; padding: 8px 14px;" onclick="showExhaustedAccounts()">🗑️ 删除耗尽</button>
+            <div class="toolbar" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);">
+                <button id="btnSwitchBest" class="btn btn-secondary" onclick="switchToBest()">★ 切换最优</button>
+                <button id="btnRemoveExhausted" class="btn btn-secondary" onclick="showExhaustedAccounts()">✕ 删除耗尽</button>
             </div>
             <div id="accountList"></div>
         </div>
     </div>
     
-    <!-- 分享有礼模态框 -->
+    <!-- Share Modal -->
     <div class="modal" id="shareModal">
-        <div class="modal-content" style="max-width: 480px;">
-            <h3 class="modal-title">🎁 分享有礼</h3>
-            <div style="background: linear-gradient(135deg, #1a1b26 0%, #24283b 100%); border-radius: 12px; padding: 20px; margin-bottom: 15px;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div style="font-size: 24px; margin-bottom: 10px;">
-                        <span id="shareStars">⭐⭐⭐</span>
+        <div class="modal-content" style="max-width: 520px;">
+            <h3 class="modal-title" id="shareModalTitle">分享赚积分</h3>
+            <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 24px; margin-bottom: 20px;">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <div style="font-size: 20px; margin-bottom: 12px; letter-spacing: 4px;">
+                        <span id="shareStars">* * *</span>
                     </div>
-                    <div style="color: #7aa2f7; font-size: 14px;">
-                        有效分享: <span id="shareCount" style="color: #50fa7b; font-weight: bold;">0</span> 人
-                    </div>
-                </div>
-                <div style="background: #1e1e2e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                    <div style="color: #8be9fd; font-size: 12px; margin-bottom: 8px;">📋 您的专属分享链接:</div>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" id="shareLink" readonly style="flex: 1; background: #2d3250; border: 1px solid #44475a; border-radius: 6px; color: #f8f8f2; padding: 8px; font-size: 11px;">
-                        <button class="btn btn-primary" onclick="copyShareLink()" style="padding: 8px 16px;">复制</button>
+                    <div style="color: var(--accent-blue); font-size: 12px;">
+                        <span id="validSharesLabel">有效分享</span>: <span id="shareCount" style="color: var(--accent-green); font-weight: 500;">0</span>
                     </div>
                 </div>
-                <div style="color: #a9b1d6; font-size: 12px; line-height: 1.8;">
-                    <p style="margin-bottom: 8px;">📌 <b>分享规则:</b></p>
-                    <p>1. 分享链接给好友，好友下载并安装客户端</p>
-                    <p>2. 好友成功导入 SF-Key 即算有效分享</p>
-                    <p>3. 每满 3 个有效分享，获得 1 个奖励 Key ⭐</p>
-                    <p>4. 累计 10 个有效分享，解锁额外奖励 🎉</p>
+                <div style="background: var(--bg-primary); border: 1px solid var(--border-color); padding: 16px; margin-bottom: 16px;">
+                    <div id="shareLinkLabel" style="color: var(--accent-blue); font-size: 10px; margin-bottom: 10px; letter-spacing: 1px;">您的分享链接:</div>
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="shareLink" readonly style="flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 10px; font-size: 10px;">
+                        <button id="btnCopyShareLink" class="btn btn-secondary" onclick="copyShareLink()" style="padding: 10px 20px;">⊕ 复制</button>
+                    </div>
+                </div>
+                <div id="shareRulesBox" style="color: var(--text-secondary); font-size: 11px; line-height: 2;">
+                    <p style="margin-bottom: 8px; color: var(--text-muted); letter-spacing: 1px;">规则:</p>
+                    <p>1. 分享链接给朋友</p>
+                    <p>2. 朋友导入SF-Key = 有效分享</p>
+                    <p>3. 每3次分享 = 1个奖励Key</p>
+                    <p>4. 10次分享 = 额外奖励</p>
                 </div>
             </div>
-            <div style="background: #2d1f3d; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
-                <div style="color: #bd93f9; font-size: 12px;">
-                    <span>🏆 奖励进度: </span>
-                    <span id="rewardProgress">加载中...</span>
+            <div style="background: var(--bg-secondary); border: 1px solid var(--accent-purple); padding: 14px; margin-bottom: 20px;">
+                <div style="color: var(--accent-purple); font-size: 11px;">
+                    <span id="progressLabel">进度</span>: <span id="rewardProgress">加载中...</span>
                 </div>
             </div>
             <div class="btn-row" style="justify-content: flex-end;">
-                <button class="btn btn-secondary" onclick="closeShareModal()">关闭</button>
+                <button id="btnCloseShare" class="btn btn-secondary" onclick="closeShareModal()">✕ 关闭</button>
             </div>
         </div>
     </div>
     
     <div class="modal" id="renewModal">
-        <div class="modal-content" style="max-width: 420px;">
-            <h3 class="modal-title">🔄 全部续期</h3>
-            <div style="background: #1e1e2e; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 12px; color: #cdd6f4;">
-                <p style="margin-bottom: 8px;">• 智能续期：仅刷新已过期的账号</p>
-                <p style="margin-bottom: 0;">• 强制续期：刷新所有账号（包括有效的）</p>
+        <div class="modal-content" style="max-width: 460px;">
+            <h3 class="modal-title" id="renewModalTitle">全部续期</h3>
+            <div id="renewDescBox" style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 16px; margin-bottom: 16px; font-size: 11px; color: var(--text-secondary);">
+                <p style="margin-bottom: 8px;">智能续期：仅刷新已过期账号</p>
+                <p style="margin-bottom: 0;">强制续期：刷新所有账号</p>
             </div>
-            <div style="background: #2d1f1f; border-radius: 8px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #f9e2af;">
-                <p style="margin-bottom: 5px;">⚠️ 续期后仍失效？可能原因：</p>
+            <div id="renewWarningBox" style="background: var(--bg-secondary); border: 1px solid var(--accent-yellow); padding: 14px; margin-bottom: 20px; font-size: 10px; color: var(--accent-yellow);">
+                <p style="margin-bottom: 6px;">续期后仍然无效？</p>
                 <p style="margin-bottom: 3px;">1. Key额度已耗尽</p>
-                <p style="margin-bottom: 0;">2. 服务器刷新失败 → 请使用「自主刷新」</p>
+                <p style="margin-bottom: 0;">2. 服务器刷新失败 - 使用自主刷新</p>
             </div>
-            <div class="btn-row" style="gap: 8px;">
-                <button class="btn btn-success" onclick="doRenewTokens(false)">智能续期</button>
-                <button class="btn btn-warning" onclick="doRenewTokens(true)">强制续期</button>
-                <button class="btn btn-secondary" onclick="closeRenewModal()">关闭</button>
+            <div class="btn-row" style="gap: 10px;">
+                <button id="btnSmartRenew" class="btn btn-secondary" onclick="doRenewTokens(false)">◎ 智能续期</button>
+                <button id="btnForceRenew" class="btn btn-secondary" onclick="doRenewTokens(true)">↻ 强制续期</button>
+                <button id="btnCloseRenew" class="btn btn-secondary" onclick="closeRenewModal()">✕ 关闭</button>
             </div>
         </div>
     </div>
     <div class="modal" id="remarkModal">
         <div class="modal-content">
-            <h3 class="modal-title">编辑备注</h3>
+            <h3 class="modal-title" id="remarkModalTitle">编辑备注</h3>
             <input type="hidden" id="remarkIndex">
             <textarea id="remarkInput" rows="3" placeholder="输入备注..."></textarea>
             <div class="btn-row">
-                <button class="btn btn-primary" onclick="saveRemark()">保存</button>
-                <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button id="btnSaveRemark" class="btn btn-secondary" onclick="saveRemark()">✓ 保存</button>
+                <button id="btnCancelRemark" class="btn btn-secondary" onclick="closeModal()">✕ 取消</button>
             </div>
         </div>
     </div>
     <div class="modal" id="selfRefreshModal">
-        <div class="modal-content" style="max-width: 580px;">
-            <h3 class="modal-title">🔄 自主刷新账号</h3>
-            <p style="color: #8be9fd; font-size: 12px; margin-bottom: 5px;">Key: <span id="refreshKeyIdDisplay" style="font-family: monospace;"></span></p>
-            <p style="color: #ffb86c; font-size: 11px; margin-bottom: 10px;">地区节点: <span id="refreshRegionDisplay">-</span></p>
-            <div style="background: #1e1e2e; border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 11px; color: #cdd6f4; max-height: 180px; overflow-y: auto;">
-                <div style="color: #f9e2af; font-weight: bold; margin-bottom: 8px;">📋 刷新步骤：</div>
-                <div style="margin-bottom: 4px;">1️⃣ 设置 Chrome 为默认浏览器（刷新完之后可以改回去）</div>
-                <div style="margin-bottom: 4px;">2️⃣ 将您的干净节点切换至「<span style="color:#50fa7b;" id="refreshRegionHint">对应地区</span>」</div>
-                <div style="margin-bottom: 4px;">3️⃣ 点击下方「🍪 Cookie注入」将云端Cookie注入到Chrome</div>
-                <div style="margin-bottom: 4px;">4️⃣ 点击下方「🌐 打开登录页」选择您的系统后启动登录流程</div>
-                <div style="margin-bottom: 4px;">5️⃣ 如果账户未自动登录，请点击「复制账号」「复制密码」手动登录</div>
-                <div style="margin-bottom: 4px;">6️⃣ 登录成功后，在浏览器中点击「连接设备」</div>
-                <div style="margin-bottom: 8px;">7️⃣ 最后点击「✅ 更新账号」保存Token</div>
-                <div style="color: #6272a4; font-size: 10px; border-top: 1px dashed #44475a; padding-top: 8px;">
-                    💡 备注：不自主刷新账号功能仍可使用，但无法查询余额。如果流程繁琐，可点击「📨 申请刷新」，服务器会在闲时进行刷新同步。
+        <div class="modal-content" style="max-width: 600px;">
+            <h3 class="modal-title" id="selfRefreshTitle">自主刷新账号</h3>
+            <p style="color: var(--accent-blue); font-size: 11px; margin-bottom: 6px;">Key: <span id="refreshKeyIdDisplay"></span></p>
+            <p style="color: var(--accent-orange); font-size: 10px; margin-bottom: 16px;"><span id="regionLabel">地区</span>: <span id="refreshRegionDisplay">-</span></p>
+            <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 16px; margin-bottom: 20px; font-size: 10px; color: var(--text-secondary); max-height: 180px; overflow-y: auto;">
+                <div id="stepsLabel" style="color: var(--accent-yellow); font-weight: 500; margin-bottom: 12px; letter-spacing: 1px;">步骤:</div>
+                <div id="step1" style="margin-bottom: 6px;">1. 设置Chrome为默认浏览器</div>
+                <div style="margin-bottom: 6px;"><span id="step2">2. 切换VPN到</span> <span style="color: var(--accent-green);" id="refreshRegionHint">对应地区</span></div>
+                <div id="step3" style="margin-bottom: 6px;">3. 点击下方Cookie注入</div>
+                <div id="step4" style="margin-bottom: 6px;">4. 点击打开登录页并选择系统</div>
+                <div id="step5" style="margin-bottom: 6px;">5. 如果未自动登录，手动复制账号密码</div>
+                <div id="step6" style="margin-bottom: 6px;">6. 登录后点击浏览器中的连接设备</div>
+                <div id="step7" style="margin-bottom: 10px;">7. 最后点击更新账号</div>
+                <div id="selfRefreshNote" style="color: var(--text-muted); font-size: 9px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                    备注：不自主刷新账号功能仍可使用，但无法查询余额。
                 </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                <button class="btn" style="background: linear-gradient(135deg, #ff79c6, #bd93f9); color: white; padding: 10px 8px;" onclick="selfRefreshCookieInject()">🍪 Cookie注入</button>
-                <button class="btn" style="background: linear-gradient(135deg, #bd93f9, #8be9fd); color: white; padding: 10px 8px;" onclick="showSystemSelect()">🌐 打开登录页</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <button id="btnCookieInject" class="btn btn-secondary" onclick="selfRefreshCookieInject()">◈ Cookie注入</button>
+                <button id="btnOpenLogin" class="btn btn-secondary" onclick="showSystemSelect()">⇗ 打开登录页</button>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                <button class="btn" style="background: linear-gradient(135deg, #f1fa8c, #ffb86c); color: #282a36; padding: 8px 6px; font-size: 12px;" onclick="selfRefreshCopyEmail()">📧 复制账号</button>
-                <button class="btn" style="background: linear-gradient(135deg, #ffb86c, #ff5555); color: white; padding: 8px 6px; font-size: 12px;" onclick="selfRefreshCopyPassword()">🔑 复制密码</button>
-                <button class="btn btn-secondary" style="padding: 8px 6px; font-size: 12px;" onclick="selfRefreshClearChrome()">🗑️ 清空Chrome</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <button id="btnCopyEmail" class="btn btn-secondary" onclick="selfRefreshCopyEmail()">⊕ 复制账号</button>
+                <button id="btnCopyPassword" class="btn btn-secondary" onclick="selfRefreshCopyPassword()">⊕ 复制密码</button>
+                <button id="btnClearChrome" class="btn btn-secondary" onclick="selfRefreshClearChrome()">⊗ 清空Chrome</button>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px;">
-                <button class="btn" style="background: linear-gradient(135deg, #50fa7b, #8be9fd); color: #282a36; padding: 12px; font-size: 14px; font-weight: bold;" onclick="selfRefreshUpdateAccount()">✅ 更新账号（登录成功后点击）</button>
+            <div style="margin-bottom: 16px;">
+                <button id="btnUpdateAccount" class="btn btn-secondary" style="width: 100%; padding: 14px;" onclick="selfRefreshUpdateAccount()">↻ 更新账号</button>
             </div>
-            <div style="display: flex; gap: 8px;">
-                <button class="btn btn-secondary" style="flex: 1; font-size: 11px;" onclick="selfRefreshSubmitRequest()">📨 申请刷新</button>
-                <button class="btn btn-secondary" style="flex: 1; font-size: 11px;" onclick="closeSelfRefreshModal()">关闭</button>
+            <div style="display: flex; gap: 10px;">
+                <button id="btnRequestRefresh" class="btn btn-secondary" style="flex: 1;" onclick="selfRefreshSubmitRequest()">✉ 申请刷新</button>
+                <button id="btnCloseSelfRefresh" class="btn btn-secondary" style="flex: 1;" onclick="closeSelfRefreshModal()">✕ 关闭</button>
             </div>
         </div>
     </div>
     <div class="modal" id="systemSelectModal">
-        <div class="modal-content" style="max-width: 350px;">
-            <h3 class="modal-title">🖥️ 选择您的系统</h3>
-            <p style="color: #6272a4; font-size: 12px; margin-bottom: 15px;">请选择您当前使用的操作系统：</p>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <button class="btn" style="background: linear-gradient(135deg, #6272a4, #44475a); color: white; padding: 20px; font-size: 14px;" onclick="selfRefreshOpenLoginMac()">🍎 Mac 系统</button>
-                <button class="btn" style="background: linear-gradient(135deg, #8be9fd, #6272a4); color: #282a36; padding: 20px; font-size: 14px;" onclick="selfRefreshOpenLoginWindows()">🪟 Windows</button>
+        <div class="modal-content" style="max-width: 380px;">
+            <h3 class="modal-title" id="selectSystemTitle">选择系统</h3>
+            <p id="selectSystemDesc" style="color: var(--text-muted); font-size: 11px; margin-bottom: 20px;">请选择您的操作系统:</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <button class="btn" style="border-color: var(--text-secondary); padding: 24px; font-size: 12px;" onclick="selfRefreshOpenLoginMac()">macOS</button>
+                <button class="btn" style="border-color: var(--accent-blue); color: var(--accent-blue); padding: 24px; font-size: 12px;" onclick="selfRefreshOpenLoginWindows()">Windows</button>
             </div>
-            <div style="margin-top: 15px;">
-                <button class="btn btn-secondary" style="width: 100%;" onclick="closeSystemSelect()">取消</button>
+            <div style="margin-top: 20px;">
+                <button id="btnCancelSystem" class="btn btn-secondary" style="width: 100%;" onclick="closeSystemSelect()">取消</button>
             </div>
         </div>
     </div>
     <div class="modal" id="exhaustedModal">
-        <div class="modal-content" style="max-width: 500px;">
-            <h3 class="modal-title">🗑️ 删除已耗尽账号</h3>
-            <p style="color: #6272a4; font-size: 12px; margin-bottom: 10px;">以下账号使用率 ≥ 100%，勾选后点击删除</p>
+        <div class="modal-content" style="max-width: 520px;">
+            <h3 class="modal-title" id="exhaustedModalTitle">删除已耗尽账号</h3>
+            <p id="exhaustedModalDesc" style="color: var(--text-muted); font-size: 11px; margin-bottom: 16px;">以下账号使用率≥100%，勾选后点击删除</p>
             <div class="exhausted-list" id="exhaustedList">加载中...</div>
             <div class="btn-row">
-                <button class="btn btn-danger" onclick="confirmDeleteExhausted()">确认删除</button>
-                <button class="btn btn-secondary" onclick="closeExhaustedModal()">取消</button>
+                <button id="btnConfirmDelete" class="btn btn-secondary" onclick="confirmDeleteExhausted()">✓ 确认删除</button>
+                <button id="btnCancelExhausted" class="btn btn-secondary" onclick="closeExhaustedModal()">✕ 取消</button>
+            </div>
+        </div>
+    </div>
+    <!-- 工单系统模态框 -->
+    <div class="modal" id="ticketModal">
+        <div class="modal-content" style="max-width: 580px;">
+            <h3 class="modal-title" style="color: var(--accent-red);">📋 问题反馈</h3>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button id="tabSubmit" class="btn btn-primary" style="flex: 1;" onclick="showTicketTab('submit')">☁ 提交反馈</button>
+                <button id="tabMyTickets" class="btn btn-secondary" style="flex: 1;" onclick="showTicketTab('mytickets')">🔒 我的工单</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 20px;">提交问题后，我们会查看日志并尽快处理</p>
+            <!-- 提交反馈面板 -->
+            <div id="submitPanel">
+                <div style="margin-bottom: 16px;">
+                    <div style="color: var(--accent-gold); font-size: 12px; margin-bottom: 8px;">工单编号: <span id="ticketNumber" style="color: var(--accent-blue);"></span></div>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 8px;">问题类型</label>
+                    <select id="ticketType" style="width: 100%; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                        <option value="error">程序错误/崩溃</option>
+                        <option value="balance">额度查询问题</option>
+                        <option value="login">登录/切换问题</option>
+                        <option value="sync">云端同步问题</option>
+                        <option value="feature">功能建议</option>
+                        <option value="other">其他问题</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 8px;">问题描述</label>
+                    <textarea id="ticketDesc" rows="5" placeholder="请详细描述您遇到的问题..." style="width: 100%; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px; resize: none;"></textarea>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 8px;">联系方式 (选填)</label>
+                    <input type="text" id="ticketContact" placeholder="邮箱或其他联系方式" style="width: 100%; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; color: var(--text-muted); font-size: 11px;">
+                    <input type="checkbox" id="attachLogs" checked style="width: 14px; height: 14px;">
+                    <label for="attachLogs">提交时将自动附带运行日志，用于问题排查</label>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" onclick="submitTicket()">☁ 提交反馈</button>
+                    <button class="btn btn-secondary" onclick="closeTicketModal()">取消</button>
+                </div>
+            </div>
+            <!-- 我的工单面板 -->
+            <div id="myTicketsPanel" style="display: none;">
+                <div id="ticketList" style="max-height: 400px; overflow-y: auto;">
+                    <div style="text-align: center; color: var(--text-muted); padding: 40px;">加载中...</div>
+                </div>
+                <div class="btn-row" style="margin-top: 20px;">
+                    <button class="btn btn-secondary" onclick="loadMyTickets()">↻ 刷新</button>
+                    <button class="btn btn-secondary" onclick="closeTicketModal()">关闭</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1940,14 +2485,412 @@ _H1='''<!DOCTYPE html>
                 </svg>
                 <div class="progress-text" id="progressText">0%</div>
             </div>
-            <div class="loading-message" id="loadingMessage">API Key 正在读取中...</div>
+            <div class="loading-message" id="loadingMessage">加载中...</div>
         </div>
     </div>
     <script>
+        // 多语言系统
+        let currentLang = localStorage.getItem('lang') || 'zh';
+        const i18n = {
+            en: {
+                // 页面标题
+                pageTitle: 'Token Manager',
+                pageSubtitle: "/ 'tok-en 'man-i-jer / Your key management system",
+                // 卡片标题
+                importKey: 'Import Key',
+                credits: 'Credits',
+                currentSession: 'Current Session',
+                accountPool: 'Account Pool',
+                // 按钮
+                clear: 'Clear',
+                import: 'Import',
+                refresh: 'Refresh',
+                cloudSync: 'Cloud Sync',
+                queryBalance: 'Query Balance',
+                renewAll: 'Renew All',
+                ticket: 'Ticket',
+                autoSwitch: 'Auto Switch',
+                switchBest: 'Switch Best',
+                removeExhausted: 'Remove Exhausted',
+                switch: 'Switch',
+                sync: 'Sync',
+                request: 'Request',
+                edit: 'Edit',
+                del: 'Del',
+                active: 'Active',
+                close: 'Close',
+                save: 'Save',
+                cancel: 'Cancel',
+                copy: 'Copy',
+                confirmDelete: 'Confirm Delete',
+                smartRenew: 'Smart Renew',
+                forceRenew: 'Force Renew',
+                // 表头
+                keyId: 'Key ID',
+                status: 'Status',
+                balance: 'Balance',
+                remain: 'Remain',
+                usage: 'Usage',
+                remark: 'Remark',
+                added: 'Added',
+                actions: 'Actions',
+                // 开关
+                refreshGuard: 'Refresh Guard:',
+                autoSwitch: 'Auto Switch:',
+                on: 'On',
+                off: 'Off',
+                // 提示信息
+                firstImportBonus: 'First import bonus: 10M quota',
+                checkUpdate: 'Check Update',
+                shareEarn: 'Share & Earn',
+                contact: 'Contact:',
+                detecting: 'Detecting...',
+                noSession: 'No active session. Run droid auth login first.',
+                noAccounts: 'No accounts yet. Import a Key to get started.',
+                loading: 'Loading...',
+                // Toast消息
+                pasteKeyFirst: 'Please paste your Key first',
+                loadingKey: 'Loading your SF-Key...',
+                syncingCloud: 'Syncing from cloud...',
+                queryingBalance: 'Querying all account balances...',
+                balanceComplete: 'Balance query complete',
+                queryFailed: 'Query failed',
+                smartRenewing: 'Smart renewing...',
+                forceRenewing: 'Force renewing all accounts...',
+                switchingAccount: 'Switching account...',
+                deleteConfirm: 'Are you sure you want to delete this account?',
+                refreshing: 'Refreshing...',
+                switchingBest: 'Switching to best account...',
+                noExhausted: 'No exhausted accounts found',
+                selectOne: 'Please select at least one account',
+                refreshEnabled: 'Refresh guard enabled',
+                refreshDisabled: 'Refresh guard disabled',
+                connectionRestored: 'Connection restored',
+                connectionLost: 'Connection lost, reconnecting...',
+                connectionFailed: 'Connection failed, check if client is running',
+                timeout: 'Operation timeout, please retry',
+                newAccountsSync: 'New accounts detected, syncing from cloud...',
+                checkingUpdate: 'Checking for updates...',
+                checkFailed: 'Check failed',
+                linkCopied: 'Link copied to clipboard',
+                linkEmpty: 'Link is empty',
+                loadShareFailed: 'Failed to load share info',
+                // 模态框
+                shareTitle: 'Share & Earn',
+                validShares: 'Valid shares:',
+                yourShareLink: 'Your share link:',
+                rules: 'Rules:',
+                rule1: '1. Share link with friends',
+                rule2: '2. Friend imports SF-Key = valid share',
+                rule3: '3. Every 3 shares = 1 reward key',
+                rule4: '4. 10 shares = bonus unlock',
+                progress: 'Progress:',
+                renewTitle: 'Renew All Tokens',
+                renewSmartDesc: 'Smart Renew: Only refresh expired accounts',
+                renewForceDesc: 'Force Renew: Refresh all accounts',
+                renewWarning: 'Still invalid after renewal?',
+                renewReason1: '1. Key quota exhausted',
+                renewReason2: '2. Server refresh failed - use Self Refresh',
+                editRemark: 'Edit Remark',
+                enterRemark: 'Enter remark...',
+                selfRefreshTitle: 'Self Refresh Account',
+                region: 'Region:',
+                steps: 'Steps:',
+                step1: '1. Set Chrome as default browser',
+                step2: '2. Switch VPN to',
+                targetRegion: 'target region',
+                step3: '3. Click Cookie Inject below',
+                step4: '4. Click Open Login and select your system',
+                step5: '5. If not auto-logged in, copy email/password manually',
+                step6: '6. After login, click Connect Device in browser',
+                step7: '7. Finally click Update Account',
+                selfRefreshNote: 'Note: Without self-refresh, functions still work but balance query unavailable.',
+                cookieInject: 'Cookie Inject',
+                openLogin: 'Open Login',
+                copyEmail: 'Copy Email',
+                copyPassword: 'Copy Password',
+                clearChrome: 'Clear Chrome',
+                updateAccount: 'Update Account',
+                requestRefresh: 'Request Refresh',
+                selectSystem: 'Select System',
+                selectSystemDesc: 'Choose your operating system:',
+                chooseOS: 'Choose your operating system:',
+                exhaustedTitle: 'Remove Exhausted Accounts',
+                exhaustedDesc: 'Accounts with usage >= 100%. Select and delete.',
+                // 状态
+                valid: 'Valid',
+                expired: 'Expired',
+                pending: 'Pending',
+                // 前端后端
+                frontend: 'Frontend:',
+                backend: 'Backend:'
+            },
+            zh: {
+                // 页面标题
+                pageTitle: '密钥管理器',
+                pageSubtitle: '/ mi-yao guan-li-qi / 您的密钥管理系统',
+                // 卡片标题
+                importKey: '导入密钥',
+                credits: '致谢',
+                currentSession: '当前登录状态',
+                accountPool: '账号池',
+                // 按钮
+                clear: '清空',
+                import: '导入',
+                refresh: '刷新',
+                cloudSync: '云端同步',
+                queryBalance: '查询额度',
+                renewAll: '全部续期',
+                ticket: '工单',
+                autoSwitch: '自动切换',
+                switchBest: '切换最优',
+                removeExhausted: '删除耗尽',
+                switch: '切换',
+                sync: '同步',
+                request: '申请',
+                edit: '备注',
+                del: '删除',
+                active: '已登录',
+                close: '关闭',
+                save: '保存',
+                cancel: '取消',
+                copy: '复制',
+                confirmDelete: '确认删除',
+                smartRenew: '智能续期',
+                forceRenew: '强制续期',
+                // 表头
+                keyId: '密钥编号',
+                status: '状态',
+                balance: '额度状态',
+                remain: '剩余',
+                usage: '使用率',
+                remark: '备注',
+                added: '添加时间',
+                actions: '操作',
+                // 开关
+                refreshGuard: '刷新保护:',
+                autoSwitch: '自动切换:',
+                on: '开启',
+                off: '关闭',
+                // 提示信息
+                firstImportBonus: '首次添加满1000万额度',
+                checkUpdate: '检查更新',
+                shareEarn: '分享有礼',
+                contact: '联系作者:',
+                detecting: '检测中...',
+                noSession: '未检测到登录账号（请先运行 droid auth login）',
+                noAccounts: '暂无账号，请添加密钥',
+                loading: '加载中...',
+                // Toast消息
+                pasteKeyFirst: '请先粘贴密钥',
+                loadingKey: '您的SF-Key正在加载中，请稍后...',
+                syncingCloud: '正在从云端同步账号数据...',
+                queryingBalance: '正在查询所有账号额度...',
+                balanceComplete: '额度查询完成',
+                queryFailed: '查询失败',
+                smartRenewing: '正在智能续期...',
+                forceRenewing: '正在强制续期所有账号...',
+                switchingAccount: '正在切换账号...',
+                deleteConfirm: '确定要删除这个账号吗？',
+                refreshing: '正在刷新...',
+                switchingBest: '正在切换到最优账号...',
+                noExhausted: '没有已耗尽的账号',
+                selectOne: '请至少选择一个账号',
+                refreshEnabled: '刷新保护已开启',
+                refreshDisabled: '刷新保护已关闭',
+                connectionRestored: '服务已恢复连接',
+                connectionLost: '服务连接断开，正在尝试重连...',
+                connectionFailed: '服务连接失败，请检查客户端是否运行',
+                timeout: '操作超时，请重试',
+                newAccountsSync: '检测到新账号，正在从云端同步数据...',
+                checkingUpdate: '检查更新中...',
+                checkFailed: '检查失败',
+                linkCopied: '链接已复制到剪贴板',
+                linkEmpty: '链接为空',
+                loadShareFailed: '获取分享信息失败',
+                // 模态框
+                shareTitle: '分享有礼',
+                validShares: '有效分享:',
+                yourShareLink: '您的专属分享链接:',
+                rules: '分享规则:',
+                rule1: '1. 分享链接给好友，好友下载并安装客户端',
+                rule2: '2. 好友成功导入SF-Key即算有效分享',
+                rule3: '3. 每满3个有效分享，获得1个奖励Key',
+                rule4: '4. 累计10个有效分享，解锁额外奖励',
+                progress: '奖励进度:',
+                renewTitle: '全部续期',
+                renewSmartDesc: '智能续期：仅刷新已过期的账号',
+                renewForceDesc: '强制续期：刷新所有账号（包括有效的）',
+                renewWarning: '续期后仍失效？可能原因：',
+                renewReason1: '1. Key额度已耗尽',
+                renewReason2: '2. 服务器刷新失败 → 请使用「自主刷新」',
+                editRemark: '编辑备注',
+                enterRemark: '输入备注...',
+                selfRefreshTitle: '自主刷新账号',
+                region: '地区节点:',
+                steps: '刷新步骤：',
+                step1: '1. 设置Chrome为默认浏览器',
+                step2: '2. 将您的节点切换至',
+                targetRegion: '对应地区',
+                step3: '3. 点击下方「Cookie注入」',
+                step4: '4. 点击「打开登录页」选择系统',
+                step5: '5. 如未自动登录，请复制账号密码手动登录',
+                step6: '6. 登录成功后，在浏览器中点击「连接设备」',
+                step7: '7. 最后点击「更新账号」保存Token',
+                selfRefreshNote: '备注：不自主刷新账号功能仍可使用，但无法查询余额。',
+                cookieInject: 'Cookie注入',
+                openLogin: '打开登录页',
+                copyEmail: '复制账号',
+                copyPassword: '复制密码',
+                clearChrome: '清空Chrome',
+                updateAccount: '更新账号',
+                requestRefresh: '申请刷新',
+                selectSystem: '选择系统',
+                selectSystemDesc: '请选择您的操作系统:',
+                chooseOS: '请选择您的操作系统：',
+                exhaustedTitle: '删除已耗尽账号',
+                exhaustedDesc: '以下账号使用率≥100%，勾选后点击删除',
+                // 状态
+                valid: '有效',
+                expired: '已过期',
+                pending: '待验证',
+                // 前端后端
+                frontend: '前端程序员:',
+                backend: '后端程序员:'
+            }
+        };
+        
+        function t(key) {
+            return i18n[currentLang][key] || i18n['en'][key] || key;
+        }
+        
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'zh' : 'en';
+            localStorage.setItem('lang', currentLang);
+            document.getElementById('langSwitch').textContent = currentLang === 'en' ? '中文' : 'EN';
+            applyLanguage();
+        }
+        
+        function applyLanguage() {
+            // 页面标题
+            document.querySelector('.page-header h2').textContent = t('pageTitle');
+            document.querySelector('.page-header .subtitle').textContent = t('pageSubtitle');
+            
+            // 卡片标题
+            const cardTitles = document.querySelectorAll('.card-title');
+            if (cardTitles[0]) cardTitles[0].textContent = t('importKey');
+            
+            // Credits
+            document.querySelector('.credits-title').textContent = t('credits');
+            
+            // 按钮
+            document.querySelectorAll('.btn-row')[0].children[0].textContent = '✕ ' + t('clear');
+            document.querySelectorAll('.btn-row')[0].children[1].textContent = '↵ ' + t('import');
+            
+            // 提示
+            document.querySelector('.hint-orange').textContent = t('firstImportBonus');
+            
+            // 信息行
+            const infoSpans = document.querySelectorAll('.info-row span');
+            if (infoSpans[0]) infoSpans[0].textContent = t('contact') + ' haooicq@gmail.com';
+            if (infoSpans[1]) infoSpans[1].textContent = t('checkUpdate');
+            if (infoSpans[2]) infoSpans[2].textContent = t('shareEarn');
+            
+            // 当前会话卡片
+            if (cardTitles[1]) cardTitles[1].textContent = t('currentSession');
+            
+            // 工具栏按钮
+            document.getElementById('btnRefresh').textContent = '⟳ ' + t('refresh');
+            document.getElementById('btnCloudSync').textContent = '☁ ' + t('cloudSync');
+            document.getElementById('btnQueryBalance').textContent = '◎ ' + t('queryBalance');
+            document.getElementById('btnRenewAll').textContent = '↻ ' + t('renewAll');
+            document.getElementById('btnSwitchBest').textContent = '★ ' + t('switchBest');
+            document.getElementById('btnRemoveExhausted').textContent = '✕ ' + t('removeExhausted');
+            document.getElementById('autoSwitchLabel').textContent = t('autoSwitch') + ':';
+            
+            // Self Refresh模态框
+            document.getElementById('selfRefreshTitle').textContent = t('selfRefreshTitle');
+            document.getElementById('regionLabel').textContent = t('region').replace(':', '');
+            document.getElementById('stepsLabel').textContent = t('steps');
+            document.getElementById('step1').textContent = t('step1');
+            document.getElementById('step2').textContent = t('step2');
+            document.getElementById('step3').textContent = t('step3');
+            document.getElementById('step4').textContent = t('step4');
+            document.getElementById('step5').textContent = t('step5');
+            document.getElementById('step6').textContent = t('step6');
+            document.getElementById('step7').textContent = t('step7');
+            document.getElementById('selfRefreshNote').textContent = t('selfRefreshNote');
+            document.getElementById('btnCookieInject').textContent = '◈ ' + t('cookieInject');
+            document.getElementById('btnOpenLogin').textContent = '⇗ ' + t('openLogin');
+            document.getElementById('btnCopyEmail').textContent = '⊕ ' + t('copyEmail');
+            document.getElementById('btnCopyPassword').textContent = '⊕ ' + t('copyPassword');
+            document.getElementById('btnClearChrome').textContent = '⊗ ' + t('clearChrome');
+            document.getElementById('btnUpdateAccount').textContent = '↻ ' + t('updateAccount');
+            document.getElementById('btnRequestRefresh').textContent = '✉ ' + t('requestRefresh');
+            document.getElementById('btnCloseSelfRefresh').textContent = '✕ ' + t('close');
+            
+            // 系统选择模态框
+            document.getElementById('selectSystemTitle').textContent = t('selectSystem');
+            document.getElementById('selectSystemDesc').textContent = t('selectSystemDesc');
+            
+            // 刷新列表以应用语言
+            loadAccounts();
+            loadLoginStatus();
+        }
+        
+        // 主题切换
+        let currentTheme = localStorage.getItem('theme') || 'dark';
+        
+        function toggleTheme() {
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('theme', currentTheme);
+            applyTheme();
+        }
+        
+        function applyTheme() {
+            const root = document.documentElement;
+            if (currentTheme === 'light') {
+                root.style.setProperty('--bg-primary', '#f5f5f0');
+                root.style.setProperty('--bg-secondary', '#ffffff');
+                root.style.setProperty('--bg-card', '#ffffff');
+                root.style.setProperty('--text-primary', '#1a1a1a');
+                root.style.setProperty('--text-secondary', '#333333');
+                root.style.setProperty('--text-muted', '#666666');
+                root.style.setProperty('--border-color', '#cccccc');
+                root.style.setProperty('--accent-gold', '#c45c2c');
+                root.style.setProperty('--accent-orange', '#c45c2c');
+                root.style.setProperty('--accent-green', '#1e7e34');
+                root.style.setProperty('--accent-red', '#c82333');
+                root.style.setProperty('--accent-blue', '#2563eb');
+                document.getElementById('themeSwitch').textContent = '☾';
+            } else {
+                root.style.setProperty('--bg-primary', '#0d0d0d');
+                root.style.setProperty('--bg-secondary', '#111');
+                root.style.setProperty('--bg-card', '#111');
+                root.style.setProperty('--text-primary', '#e0e0e0');
+                root.style.setProperty('--text-secondary', '#999');
+                root.style.setProperty('--text-muted', '#666');
+                root.style.setProperty('--border-color', '#2a2a2a');
+                root.style.setProperty('--accent-gold', '#e07a3c');
+                root.style.setProperty('--accent-orange', '#e07a3c');
+                root.style.setProperty('--accent-green', '#28a745');
+                root.style.setProperty('--accent-red', '#dc3545');
+                root.style.setProperty('--accent-blue', '#3b82f6');
+                document.getElementById('themeSwitch').textContent = '☀';
+            }
+        }
+        
+        // 页面加载时应用语言和主题
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('langSwitch').textContent = currentLang === 'en' ? '中文' : 'EN';
+            applyTheme();
+        });
+
         let loadingTimer = null;
         let progressInterval = null;
         let currentTimeout = 30000;
-        function showLoading(message = 'API Key 正在读取中...', timeout = 30000) {
+        function showLoading(message = null, timeout = 30000) {
+            message = message || t('loading');
             currentTimeout = timeout;
             document.getElementById('loadingMessage').textContent = message;
             document.getElementById('loadingOverlay').classList.add('active');
@@ -1963,7 +2906,7 @@ _H1='''<!DOCTYPE html>
             if (loadingTimer) clearTimeout(loadingTimer);
             loadingTimer = setTimeout(() => {
                 hideLoading();
-                showToast('操作超时，请重试', 'error');
+                showToast(t('timeout'), 'error');
             }, currentTimeout);
         }
         function hideLoading() {
@@ -2009,7 +2952,7 @@ _H1='''<!DOCTYPE html>
                     if (!serverOnline) {
                         serverOnline = true;
                         reconnectAttempts = 0;
-                        showToast('服务已恢复连接', 'success');
+                        showToast(t('connectionRestored'), 'success');
                         loadLoginStatus();
                         loadAccounts();
                     }
@@ -2018,7 +2961,7 @@ _H1='''<!DOCTYPE html>
             } catch (e) {
                 if (serverOnline) {
                     serverOnline = false;
-                    showToast('服务连接断开，正在尝试重连...', 'error');
+                    showToast(t('connectionLost'), 'error');
                 }
             }
             return false;
@@ -2047,14 +2990,14 @@ _H1='''<!DOCTYPE html>
                 return response.json();
             } catch (e) {
                 serverOnline = false;
-                showToast('服务连接失败，请检查客户端是否运行', 'error');
-                return { success: false, message: '服务未响应' };
+                showToast(t('connectionFailed'), 'error');
+                return { success: false, message: t('connectionFailed') };
             }
         }
         async function addToken() {
             const content = document.getElementById('tokenInput').value.trim();
-            if (!content) { showToast('请先粘贴 Key', 'error'); return; }
-            showLoading('您的 SF-Key 正在加载中，请稍后...', 20000);
+            if (!content) { showToast(t('pasteKeyFirst'), 'error'); return; }
+            showLoading(t('loadingKey'), 20000);
             const result = await api('add', { content });
             hideLoading();
             if (result.success) {
@@ -2073,7 +3016,7 @@ _H1='''<!DOCTYPE html>
             const result = await api('list');
             const container = document.getElementById('accountList');
             if (!result.accounts || result.accounts.length === 0) {
-                container.innerHTML = '<div class="empty-state">暂无账号，请添加 Key</div>';
+                container.innerHTML = `<div class="empty-state">${t('noAccounts')}</div>`;
                 return;
             }
             
@@ -2083,11 +3026,11 @@ _H1='''<!DOCTYPE html>
             // 首次加载且有需要同步的账号，自动触发云端同步
             if (isFirstLoad && needSync) {
                 isFirstLoad = false;
-                showToast('检测到新账号，正在从云端同步数据...', 'info');
+                showToast(t('newAccountsSync'), 'info');
                 setTimeout(() => syncFromCloud(), 500);
             }
             
-            let html = '<div class="table-wrapper"><table><thead><tr><th style="width:40px;">#</th><th>Key 编号</th><th style="width:80px;">状态</th><th style="width:90px;">额度状态</th><th style="width:70px;">剩余</th><th style="width:70px;">使用率</th><th style="width:80px;">备注</th><th style="width:100px;">添加时间</th><th style="width:180px;">操作</th></tr></thead><tbody>';
+            let html = `<div class="table-wrapper"><table><thead><tr><th style="width:40px;">#</th><th>${t('keyId')}</th><th style="width:80px;">${t('status')}</th><th style="width:90px;">${t('balance')}</th><th style="width:70px;">${t('remain')}</th><th style="width:70px;">${t('usage')}</th><th style="width:80px;">${t('remark')}</th><th style="width:100px;">${t('added')}</th><th style="width:200px;">${t('actions')}</th></tr></thead><tbody>`;
             for (const acc of result.accounts) {
                 const statusClass = 'status-' + acc.status;
                 const statusIcon = acc.is_current ? '🟢' : (acc.status === 'valid' ? '✅' : (acc.status === 'refresh' ? '🔄' : (acc.status === 'pending' ? '⏳' : '❌')));
@@ -2098,20 +3041,20 @@ _H1='''<!DOCTYPE html>
                 const statusTip = acc.status === 'refresh' ? ' title="Token已过期，点击☁️云端同步获取最新数据"' : (acc.status === 'pending' ? ' title="待验证状态，请点击☁️云端同步获取数据"' : '');
                 const balanceTip = acc.balance_status === 'error' ? ' title="注意：查询失败并不代表key失效，如果key额度高于20%请在几小时后重新查询，在额度使用完之前，此提示并不影响使用"' : cachedTip;
                 // 状态为 refresh 或 pending 时显示操作按钮
-                const syncBtn = (acc.status === 'refresh' || acc.status === 'pending') ? `<button class="btn btn-secondary action-btn" style="font-size:10px; padding:3px 6px;" onclick="syncFromCloud()" title="从云端同步最新数据">☁️同步</button>` : '';
-                const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn action-btn" style="font-size:10px; padding:3px 6px; background:#ffb86c; color:#1e1e2e;" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">📨申请</button>` : '';
+                const syncBtn = (acc.status === 'refresh' || acc.status === 'pending') ? `<button class="btn btn-secondary action-btn" onclick="syncFromCloud()" title="从云端同步最新数据">☁ ${t('sync')}</button>` : '';
+                const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn btn-secondary action-btn" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">✉ ${t('request')}</button>` : '';
                 const actionBtn = acc.is_current 
-                    ? '<span class="btn btn-success action-btn" style="cursor:default;opacity:0.8;font-size:11px;">已登录</span>' 
-                    : `<button class="btn btn-success action-btn" style="font-size:11px;" onclick="switchAccount(${acc.index})">切换</button>`;
+                    ? `<span class="btn btn-secondary action-btn" style="cursor:default;border-color:var(--accent-green);color:var(--accent-green);">● ${t('active')}</span>` 
+                    : `<button class="btn btn-secondary action-btn" onclick="switchAccount(${acc.index})">◇ ${t('switch')}</button>`;
                 // Key编号单元格只显示Key，按钮移到操作列
                 const extraActions = syncBtn + refreshRequestBtn;
-                html += `<tr><td style="text-align:center;">${acc.index}</td><td style="font-family: monospace; font-size: 11px;">${keyDisplay}</td><td class="${statusClass}"${statusTip}>${statusIcon} ${acc.is_current ? '登录中' : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${balanceIcon} ${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td style="font-size:11px;">${acc.added_at}</td><td style="white-space:nowrap;">${extraActions}${actionBtn}<button class="btn btn-secondary action-btn" style="font-size:11px;" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">备注</button><button class="btn btn-danger action-btn" style="font-size:11px;" onclick="deleteAccount(${acc.index})">删除</button></td></tr>`;
+                html += `<tr><td style="text-align:center;">${acc.index}</td><td>${keyDisplay}</td><td class="${statusClass}"${statusTip}>${acc.is_current ? t('active') : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td style="white-space:nowrap;">${extraActions}${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">✎ ${t('edit')}</button><button class="btn btn-secondary action-btn" onclick="deleteAccount(${acc.index})">✕ ${t('del')}</button></td></tr>`;
             }
             html += '</tbody></table></div>';
             container.innerHTML = html;
         }
         async function syncFromCloud() {
-            showLoading('正在从云端同步账号数据...', 60000);
+            showLoading(t('syncingCloud'), 60000);
             const result = await api('sync_from_cloud');
             hideLoading();
             if (result.success) {
@@ -2123,10 +3066,10 @@ _H1='''<!DOCTYPE html>
             }
         }
         async function refreshAllBalances() {
-            showToast('正在查询所有账号额度...', 'info');
+            showToast(t('queryingBalance'), 'info');
             const result = await api('refresh_balances');
-            if (result.success) { showToast('额度查询完成', 'success'); loadAccounts(); }
-            else { showToast(result.message || '查询失败', 'error'); }
+            if (result.success) { showToast(t('balanceComplete'), 'success'); loadAccounts(); }
+            else { showToast(result.message || t('queryFailed'), 'error'); }
         }
         function renewAllTokens() {
             document.getElementById('renewModal').classList.add('active');
@@ -2136,7 +3079,7 @@ _H1='''<!DOCTYPE html>
         }
         async function doRenewTokens(forceAll) {
             closeRenewModal();
-            const msg = forceAll ? '正在强制续期所有账号...' : '正在智能续期...';
+            const msg = forceAll ? t('forceRenewing') : t('smartRenewing');
             showLoading(msg, 60000);
             const result = await api('renew_all_tokens', { force_all: forceAll });
             hideLoading();
@@ -2157,32 +3100,32 @@ _H1='''<!DOCTYPE html>
                     // 只显示有效/过期状态
                     let statusBadge;
                     if (info.expired) {
-                        statusBadge = '<span class="status-badge badge-expired">已过期</span>';
+                        statusBadge = '<span class="status-badge badge-expired">Expired</span>';
                     } else {
-                        statusBadge = '<span class="status-badge badge-active">有效</span>';
+                        statusBadge = '<span class="status-badge badge-active">Valid</span>';
                     }
                     // 优先显示 sfkey，其次邮箱
-                    let userDisplay = info.sf_key_line1 || info.email || (info.sub ? `用户ID: ${info.sub.substring(0, 12)}...` : '未知用户');
+                    let userDisplay = info.sf_key_line1 || info.email || (info.sub ? `User: ${info.sub.substring(0, 12)}...` : 'Unknown');
                     if (userDisplay.startsWith('SF-') && userDisplay.length > 35) userDisplay = userDisplay.substring(0, 35) + '...';
-                    container.innerHTML = `<div class="status-row"><div class="user-info"><span style="font-family: monospace; font-size: 12px;">🔐 ${userDisplay}</span>${statusBadge}</div></div>`;
-                } else { container.innerHTML = '<span style="color: #6272a4;">❌ 未检测到登录账号（请先运行 droid auth login）</span>'; }
-            } catch (e) { container.innerHTML = '<span style="color: #ff5555;">检测失败</span>'; }
+                    container.innerHTML = `<div class="status-row"><div class="user-info"><span style="font-size: 11px;">${userDisplay}</span>${statusBadge}</div></div>`;
+                } else { container.innerHTML = '<span style="color: var(--text-muted);">No active session. Run droid auth login first.</span>'; }
+            } catch (e) { container.innerHTML = '<span style="color: var(--accent-red);">Detection failed</span>'; }
         }
         async function switchAccount(index) {
-            showLoading('正在切换账号...', 35000);
+            showLoading(t('switchingAccount'), 35000);
             const result = await api('switch', { index });
             hideLoading();
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { loadAccounts(); loadLoginStatus(); }
         }
         async function deleteAccount(index) {
-            if (!confirm('确定要删除这个账号吗？')) return;
+            if (!confirm(t('deleteConfirm'))) return;
             const result = await api('delete', { index });
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) loadAccounts();
         }
         async function refreshToken(index) {
-            showToast('正在刷新...', 'info');
+            showToast(t('refreshing'), 'info');
             const result = await api('refresh', { index });
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) loadAccounts();
@@ -2224,13 +3167,13 @@ _H1='''<!DOCTYPE html>
             currentRefreshRegion = '';
         }
         async function selfRefreshClearChrome() {
-            showToast('正在清空Chrome Google信息...', 'info');
+            showToast('Clearing Chrome Google data...', 'info');
             const result = await api('self_refresh_clear_chrome');
             showToast(result.message, result.success ? 'success' : 'error');
         }
         async function selfRefreshCookieInject() {
-            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
-            showToast('正在从云端获取Cookie并注入...', 'info');
+            if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
+            showToast('Fetching cookie from cloud...', 'info');
             const result = await api('self_refresh_cookie_login', { key_id: currentRefreshKeyId });
             showToast(result.message, result.success ? 'success' : 'error');
         }
@@ -2242,46 +3185,46 @@ _H1='''<!DOCTYPE html>
         }
         async function selfRefreshOpenLoginMac() {
             closeSystemSelect();
-            showToast('正在打开登录页 (Mac)...', 'info');
+            showToast('Opening login page (Mac)...', 'info');
             const result = await api('self_refresh_open_login', { system: 'mac' });
             showToast(result.message, result.success ? 'success' : 'error');
         }
         async function selfRefreshOpenLoginWindows() {
             closeSystemSelect();
-            showToast('正在打开登录页 (Windows)...', 'info');
+            showToast('Opening login page (Windows)...', 'info');
             const result = await api('self_refresh_open_login', { system: 'windows' });
             showToast(result.message, result.success ? 'success' : 'error');
         }
         async function selfRefreshCopyEmail() {
-            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
+            if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
             const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
             if (result.success && result.email) {
                 navigator.clipboard.writeText(result.email);
-                showToast('邮箱已复制到剪贴板', 'success');
+                showToast('Email copied to clipboard', 'success');
             } else {
-                showToast(result.message || '获取邮箱失败', 'error');
+                showToast(result.message || 'Failed to get email', 'error');
             }
         }
         async function selfRefreshCopyPassword() {
-            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
+            if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
             const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
             if (result.success && result.password) {
                 navigator.clipboard.writeText(result.password);
-                showToast('密码已复制到剪贴板', 'success');
+                showToast('Password copied to clipboard', 'success');
             } else {
-                showToast(result.message || '获取密码失败', 'error');
+                showToast(result.message || 'Failed to get password', 'error');
             }
         }
         async function selfRefreshUpdateAccount() {
-            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
-            showToast('正在检查并更新账号...', 'info');
+            if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
+            showToast('Checking and updating account...', 'info');
             const result = await api('self_refresh_update_account', { key_id: currentRefreshKeyId });
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { loadAccounts(); loadLoginStatus(); }
         }
         async function selfRefreshSubmitRequest() {
-            if (!currentRefreshKeyId) { showToast('请先选择账号', 'error'); return; }
-            showToast('正在提交申请...', 'info');
+            if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
+            showToast('Submitting request...', 'info');
             const result = await api('request_refresh', { key_id: currentRefreshKeyId });
             showToast(result.message, result.success ? 'success' : 'error');
         }
@@ -2348,20 +3291,20 @@ _H1='''<!DOCTYPE html>
         }
         
         async function checkVersion() {
-            showToast('检查更新中...', 'info');
+            showToast(t('checkingUpdate'), 'info');
             try {
                 const result = await api('check_version');
                 if (result.success && result.version) {
                     const v = result.version;
-                    const msg = `当前版本: ${v.current || '1.0.0'}\\n\\n更新日志:\\n${v.changelog || '无'}`;
-                    if (confirm(msg + '\\n\\n点击确定下载最新版本')) {
+                    const msg = `${currentLang === 'zh' ? '当前版本' : 'Current version'}: ${v.current || '1.0.0'}\\n\\n${currentLang === 'zh' ? '更新日志' : 'Changelog'}:\\n${v.changelog || (currentLang === 'zh' ? '无' : 'None')}`;
+                    if (confirm(msg + `\\n\\n${currentLang === 'zh' ? '点击确定下载最新版本' : 'Click OK to download latest version'}`)) {
                         window.open(v.download_url || 'https://github.com/shone2025/shone-factory/releases/latest', '_blank');
                     }
                 } else {
-                    showToast(result.message || '检查更新失败', 'error');
+                    showToast(result.message || t('checkFailed'), 'error');
                 }
             } catch (e) {
-                showToast('检查更新失败: ' + e, 'error');
+                showToast(t('checkFailed') + ': ' + e, 'error');
             }
         }
         
@@ -2399,7 +3342,7 @@ _H1='''<!DOCTYPE html>
                 }
                 document.getElementById('rewardProgress').textContent = progress;
             } else {
-                showToast(result.message || '获取分享信息失败', 'error');
+                showToast(result.message || t('loadShareFailed'), 'error');
             }
         }
         
@@ -2407,9 +3350,9 @@ _H1='''<!DOCTYPE html>
             const link = document.getElementById('shareLink').value;
             if (link) {
                 navigator.clipboard.writeText(link);
-                showToast('分享链接已复制到剪贴板', 'success');
+                showToast(t('linkCopied'), 'success');
             } else {
-                showToast('分享链接为空', 'error');
+                showToast(t('linkEmpty'), 'error');
             }
         }
         
@@ -2429,7 +3372,7 @@ _H1='''<!DOCTYPE html>
             document.getElementById('autoSwitchStatus').style.color = enabled ? '#50fa7b' : '#6272a4';
         }
         async function switchToBest() {
-            showLoading('正在切换到最优账号...', 35000);
+            showLoading(t('switchingBest'), 35000);
             const result = await api('switch_best');
             hideLoading();
             showToast(result.message, result.success ? 'success' : 'error');
@@ -2443,7 +3386,7 @@ _H1='''<!DOCTYPE html>
             exhaustedAccounts = result.accounts || [];
             const list = document.getElementById('exhaustedList');
             if (exhaustedAccounts.length === 0) {
-                list.innerHTML = '<div style="text-align: center; color: #50fa7b; padding: 20px;">🎉 没有已耗尽的账号</div>';
+                list.innerHTML = `<div style="text-align: center; color: var(--accent-green); padding: 20px;">${t('noExhausted')}</div>`;
             } else {
                 list.innerHTML = exhaustedAccounts.map(acc => 
                     `<div class="exhausted-item">
@@ -2462,10 +3405,10 @@ _H1='''<!DOCTYPE html>
             const checks = document.querySelectorAll('.exhaust-check:checked');
             const indices = Array.from(checks).map(c => parseInt(c.dataset.index));
             if (indices.length === 0) {
-                showToast('请至少选择一个账号', 'error');
+                showToast(t('selectOne'), 'error');
                 return;
             }
-            if (!confirm(`确定要删除 ${indices.length} 个已耗尽账号吗？`)) return;
+            if (!confirm(t('deleteConfirm'))) return;
             const result = await api('delete_exhausted', { indices });
             showToast(result.message, result.success ? 'success' : 'error');
             closeExhaustedModal();
@@ -2484,22 +3427,121 @@ _H1='''<!DOCTYPE html>
             const statusEl = document.getElementById('refreshProtectStatus');
             
             if (refreshProtectEnabled) {
-                statusEl.textContent = '开启';
-                statusEl.style.color = '#50fa7b';
-                document.getElementById('refreshProtectToggle').nextElementSibling.style.backgroundColor = '#50fa7b';
-                // 重新启动自动刷新
+                statusEl.textContent = t('on');
+                statusEl.style.color = 'var(--accent-green)';
+                document.getElementById('refreshProtectToggle').nextElementSibling.style.backgroundColor = 'var(--accent-green)';
                 startAutoRefresh();
-                showToast('刷新保护已开启，页面将自动刷新', 'success');
+                showToast(t('refreshEnabled'), 'success');
             } else {
-                statusEl.textContent = '关闭';
-                statusEl.style.color = '#ff5555';
-                document.getElementById('refreshProtectToggle').nextElementSibling.style.backgroundColor = '#ff5555';
-                // 停止自动刷新
+                statusEl.textContent = t('off');
+                statusEl.style.color = 'var(--accent-red)';
+                document.getElementById('refreshProtectToggle').nextElementSibling.style.backgroundColor = 'var(--accent-red)';
                 if (autoRefreshTimer) {
                     clearInterval(autoRefreshTimer);
                     autoRefreshTimer = null;
                 }
-                showToast('刷新保护已关闭，页面不再自动刷新。点击"手动刷新"更新数据', 'info');
+                showToast(t('refreshDisabled'), 'info');
+            }
+        }
+        
+        // 工单系统
+        let myTickets = [];
+        
+        function generateTicketNumber() {
+            const now = new Date();
+            const y = now.getFullYear().toString().slice(-2);
+            const m = (now.getMonth() + 1).toString().padStart(2, '0');
+            const d = now.getDate().toString().padStart(2, '0');
+            const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+            return `TK${y}${m}${d}${rand}`;
+        }
+        
+        function openTicketModal() {
+            document.getElementById('ticketNumber').textContent = generateTicketNumber();
+            document.getElementById('ticketDesc').value = '';
+            document.getElementById('ticketContact').value = '';
+            document.getElementById('ticketType').value = 'error';
+            showTicketTab('submit');
+            document.getElementById('ticketModal').classList.add('active');
+        }
+        
+        function closeTicketModal() {
+            document.getElementById('ticketModal').classList.remove('active');
+        }
+        
+        function showTicketTab(tab) {
+            if (tab === 'submit') {
+                document.getElementById('submitPanel').style.display = 'block';
+                document.getElementById('myTicketsPanel').style.display = 'none';
+                document.getElementById('tabSubmit').className = 'btn btn-primary';
+                document.getElementById('tabMyTickets').className = 'btn btn-secondary';
+            } else {
+                document.getElementById('submitPanel').style.display = 'none';
+                document.getElementById('myTicketsPanel').style.display = 'block';
+                document.getElementById('tabSubmit').className = 'btn btn-secondary';
+                document.getElementById('tabMyTickets').className = 'btn btn-primary';
+                loadMyTickets();
+            }
+        }
+        
+        async function submitTicket() {
+            const ticketNumber = document.getElementById('ticketNumber').textContent;
+            const ticketType = document.getElementById('ticketType').value;
+            const ticketDesc = document.getElementById('ticketDesc').value.trim();
+            const ticketContact = document.getElementById('ticketContact').value.trim();
+            const attachLogs = document.getElementById('attachLogs').checked;
+            
+            if (!ticketDesc) {
+                showToast('请填写问题描述', 'error');
+                return;
+            }
+            
+            showLoading('正在提交工单...', 15000);
+            
+            const result = await api('submit_ticket', {
+                ticket_id: ticketNumber,
+                type: ticketType,
+                description: ticketDesc,
+                contact: ticketContact,
+                attach_logs: attachLogs
+            });
+            
+            hideLoading();
+            
+            if (result.success) {
+                showToast(`工单 ${ticketNumber} 提交成功！`, 'success');
+                closeTicketModal();
+            } else {
+                showToast(result.message || '提交失败，请稍后重试', 'error');
+            }
+        }
+        
+        async function loadMyTickets() {
+            const listEl = document.getElementById('ticketList');
+            listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">加载中...</div>';
+            
+            const result = await api('get_my_tickets');
+            
+            if (result.success && result.tickets && result.tickets.length > 0) {
+                myTickets = result.tickets;
+                listEl.innerHTML = myTickets.map(t => {
+                    const statusColor = t.status === 'resolved' ? 'var(--accent-green)' : 
+                                       t.status === 'processing' ? 'var(--accent-gold)' : 'var(--text-muted)';
+                    const statusText = t.status === 'resolved' ? '已解决' : 
+                                      t.status === 'processing' ? '处理中' : '待处理';
+                    return `<div style="padding: 16px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="color: var(--accent-blue); font-size: 13px;">${t.ticket_id}</span>
+                            <span style="color: ${statusColor}; font-size: 12px;">${statusText}</span>
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 6px;">${t.type_text || t.type}</div>
+                        <div style="color: var(--text-primary); font-size: 13px; margin-bottom: 8px;">${t.description.substring(0, 100)}${t.description.length > 100 ? '...' : ''}</div>
+                        <div style="color: var(--text-muted); font-size: 11px;">${t.created_at}</div>
+                        ${t.reply ? `<div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; color: var(--accent-green); font-size: 12px;">回复: ${t.reply}</div>` : ''}
+                    </div>`;
+                }).join('');
+            } else {
+                listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px;">暂无工单记录</div>';
             }
         }
     </script>
@@ -2554,6 +3596,8 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='ping':r={"success":True,"message":"pong","timestamp":time.time()}
                 elif ac=='get_share_info':r=s._0m._0xGSI()
                 elif ac=='get_device_id':r={"success":True,"device_id":_generate_device_id()}
+                elif ac=='submit_ticket':r=_0xSTK(d)
+                elif ac=='get_my_tickets':r=_0xGMT()
                 else:r={"success":False,"message":"未知操作"}
                 s._0xsj(r)
             except Exception as e:s._0xsj({"success":False,"message":str(e)},500)

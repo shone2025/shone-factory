@@ -3,26 +3,11 @@
 
 cd "$(dirname "$0")"
 
-PORT=8765
-
-# 检查并释放端口
-check_and_kill_port() {
-    PID=$(lsof -ti:$PORT 2>/dev/null)
-    if [ -n "$PID" ]; then
-        echo "  端口 $PORT 被占用，正在释放..."
-        kill -9 $PID 2>/dev/null
-        sleep 1
-        echo "  端口已释放"
-    fi
-}
-
 # 检测 Python
 if command -v python3 &> /dev/null; then
-    check_and_kill_port
-    python3 shone_client_web.py
+    python3 launcher.py
 elif command -v python &> /dev/null; then
-    check_and_kill_port
-    python shone_client_web.py
+    python launcher.py
 else
     echo "========================================"
     echo "  ShoneFactory Token Key"
