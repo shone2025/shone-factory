@@ -337,23 +337,31 @@ def _0xCQC(sfkey_id):
         print(f"云端凭据查询异常: {e}")
     return None
 
-def _0xUTC(sfkey_id,at,rt,ex):
-    """上传Token到云端"""
-    try:
-        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
-        data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
-        ts=str(int(time.time()))
-        rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
-            'Content-Type':'application/json',
-            'X-Client-Key':_CLIENT_KEY,
-            'X-Timestamp':ts
-        },method='POST')
-        with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
-            return json.loads(rs.read().decode('utf-8'))
-    except Exception as e:
-        print(f"云端上传异常: {e}")
-    return None
+def _0xUTC(sfkey_id,at,rt,ex,retry=2):
+    """上传Token到云端（带重试机制）"""
+    last_err=None
+    for attempt in range(retry+1):
+        try:
+            ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+            data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
+            ts=str(int(time.time()))
+            rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
+                'User-Agent':'ShoneFactory-Client/1.0',
+                'Content-Type':'application/json',
+                'X-Client-Key':_CLIENT_KEY,
+                'X-Timestamp':ts
+            },method='POST')
+            with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
+                result=json.loads(rs.read().decode('utf-8'))
+                if result and result.get('success'):
+                    return result
+                last_err=result.get('message','同步失败') if result else '无响应'
+        except Exception as e:
+            last_err=str(e)
+            if attempt<retry:
+                time.sleep(0.5)
+    print(f"云端上传异常(重试{retry}次后): {last_err}")
+    return {"success":False,"message":last_err}
 
 _0xT=time.time()
 _0xCORE=None
@@ -932,7 +940,17 @@ class _0xTM:
             ki=a.get('key_id','')
             if at and ki:
                 s._0xfb(at,ki)
-            return{"success":True,"message":f"已切换到: {a['key_id']}"}
+            # 切换成功后，同步token到云端（重要：确保其他设备能获取最新token）
+            sync_warning=''
+            if sfkl1:
+                ex=po['accounts'][idx].get('exp',0)
+                sync_result=_0xUTC(sfkl1[:35],at,rt,ex)
+                if not sync_result or not sync_result.get('success'):
+                    sync_warning=' (⚠️ 云端同步失败)'
+                    print(f"[云端同步] 切换账号后同步失败: {a['key_id']}")
+                else:
+                    print(f"[云端同步] 切换账号后同步成功: {a['key_id']}")
+            return{"success":True,"message":f"已切换到: {a['key_id']}{sync_warning}"}
         return{"success":False,"message":"切换失败，请检查网络或重启客户端"}
 
     def _0xda(s,ix):
@@ -1260,7 +1278,7 @@ class _0xTM:
     def _0xrta(s,ix):
         po=s._0xlp();idx=ix-1
         if idx<0 or idx>=len(po['accounts']):return{"success":False,"message":"账号不存在"}
-        a=po['accounts'][idx];rt=a.get(_S3,'')
+        a=po['accounts'][idx];rt=a.get(_S3,'');sfkl1=a.get('sf_key_line1','')
         if not rt:return{"success":False,"message":"该账号没有 refresh_token"}
         urls=[_S7,_S8]
         for u in urls:
@@ -1270,11 +1288,22 @@ class _0xTM:
                     r=json.loads(rs.read().decode('utf-8'))
                     if _S2 in r:
                         po['accounts'][idx][_S2]=r[_S2]
-                        if _S3 in r:po['accounts'][idx][_S3]=r[_S3]
+                        new_rt=r.get(_S3,rt)
+                        po['accounts'][idx][_S3]=new_rt
                         pl=s._0xdj(r[_S2])
-                        if pl:po['accounts'][idx]['exp']=pl.get('exp',0)
+                        new_exp=pl.get('exp',0) if pl else 0
+                        if pl:po['accounts'][idx]['exp']=new_exp
                         s._0xsp(po)
-                        return{"success":True,"message":f"刷新成功: {a['key_id']}"}
+                        # 刷新成功后同步到云端（重要）
+                        sync_warning=''
+                        if sfkl1:
+                            sync_result=_0xUTC(sfkl1[:35],r[_S2],new_rt,new_exp)
+                            if not sync_result or not sync_result.get('success'):
+                                sync_warning=' (⚠️ 云端同步失败)'
+                                print(f"[云端同步] 刷新后同步失败: {a['key_id']}")
+                            else:
+                                print(f"[云端同步] 刷新后同步成功: {a['key_id']}")
+                        return{"success":True,"message":f"刷新成功: {a['key_id']}{sync_warning}"}
             except:continue
         # 刷新失败，尝试从云端获取
         sfkl1=a.get('sf_key_line1','')
