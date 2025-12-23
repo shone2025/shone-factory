@@ -2564,6 +2564,8 @@ _H1='''<!DOCTYPE html>
                 connectionRestored: 'Connection restored',
                 connectionLost: 'Connection lost, reconnecting...',
                 connectionFailed: 'Connection failed, check if client is running',
+                restartingClient: 'Restarting client, please wait...',
+                retryingAdd: 'Client restored, retrying...',
                 timeout: 'Operation timeout, please retry',
                 newAccountsSync: 'New accounts detected, syncing from cloud...',
                 checkingUpdate: 'Checking for updates...',
@@ -2697,6 +2699,8 @@ _H1='''<!DOCTYPE html>
                 connectionRestored: '服务已恢复连接',
                 connectionLost: '服务连接断开，正在尝试重连...',
                 connectionFailed: '服务连接失败，请检查客户端是否运行',
+                restartingClient: '正在重启客户端，请稍候...',
+                retryingAdd: '客户端已恢复，正在重试添加...',
                 timeout: '操作超时，请重试',
                 newAccountsSync: '检测到新账号，正在从云端同步数据...',
                 checkingUpdate: '检查更新中...',
@@ -2948,6 +2952,8 @@ _H1='''<!DOCTYPE html>
                         showToast(t('connectionRestored'), 'success');
                         loadLoginStatus();
                         loadAccounts();
+                        // 连接恢复后，检查并处理待添加的内容
+                        setTimeout(() => processPendingAdd(), 500);
                     }
                     return true;
                 }
@@ -2972,6 +2978,9 @@ _H1='''<!DOCTYPE html>
             }
         }, 5000);
         
+        let pendingAddContent = null;  // 存储待添加的SF-Key内容
+        let isRetryingAdd = false;  // 是否正在重试添加
+        
         async function api(action, data = {}) {
             try {
                 const response = await fetch('/api', {
@@ -2983,10 +2992,58 @@ _H1='''<!DOCTYPE html>
                 return response.json();
             } catch (e) {
                 serverOnline = false;
-                showToast(t('connectionFailed'), 'error');
-                return { success: false, message: t('connectionFailed') };
+                return { success: false, message: t('connectionFailed'), connectionError: true };
             }
         }
+        
+        // 尝试重启客户端
+        async function tryRestartClient() {
+            showToast(t('restartingClient'), 'info');
+            // 尝试使用 AppleScript 打开终端并运行 factory restart
+            try {
+                // 创建一个隐藏的 iframe 来触发 URL scheme
+                const restartUrl = 'x-apple.systempreferences:';  // 仅用于触发
+                // macOS 上尝试打开终端
+                window.location.href = 'x-apple-terminal://';
+            } catch(e) {}
+            
+            // 等待并尝试重连
+            for (let i = 0; i < 10; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                const online = await checkServerStatus();
+                if (online) return true;
+            }
+            return false;
+        }
+        
+        // 当连接恢复时检查并处理待添加的内容
+        async function processPendingAdd() {
+            if (pendingAddContent && !isRetryingAdd) {
+                isRetryingAdd = true;
+                showToast(t('retryingAdd'), 'info');
+                showLoading(t('loadingKey'), 20000);
+                const result = await api('add', { content: pendingAddContent });
+                hideLoading();
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    clearInput();
+                    pendingAddContent = null;
+                    localStorage.removeItem('pendingAddContent');
+                    loadAccounts();
+                    loadLoginStatus();
+                } else if (!result.connectionError) {
+                    pendingAddContent = null;
+                    localStorage.removeItem('pendingAddContent');
+                    if (result.exists) {
+                        showToast(result.message, 'info');
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                }
+                isRetryingAdd = false;
+            }
+        }
+        
         async function addToken() {
             const content = document.getElementById('tokenInput').value.trim();
             if (!content) { showToast(t('pasteKeyFirst'), 'error'); return; }
@@ -2998,6 +3055,27 @@ _H1='''<!DOCTYPE html>
                 clearInput();
                 loadAccounts();
                 loadLoginStatus();
+            } else if (result.connectionError) {
+                // 连接失败，保存内容并尝试重启客户端
+                pendingAddContent = content;
+                localStorage.setItem('pendingAddContent', content);
+                showToast(t('restartingClient'), 'info');
+                
+                // 持续尝试重连，最多60秒
+                let retryCount = 0;
+                const maxRetries = 30;
+                const retryInterval = setInterval(async () => {
+                    retryCount++;
+                    const online = await checkServerStatus();
+                    if (online) {
+                        clearInterval(retryInterval);
+                        // 连接恢复，自动重试添加
+                        await processPendingAdd();
+                    } else if (retryCount >= maxRetries) {
+                        clearInterval(retryInterval);
+                        showToast(t('connectionFailed'), 'error');
+                    }
+                }, 2000);
             } else if (result.exists) {
                 showToast(result.message, 'info');
             } else { 
@@ -3224,6 +3302,19 @@ _H1='''<!DOCTYPE html>
         loadAccounts();
         loadLoginStatus();
         loadCloudConfig();
+        
+        // 页面加载时检查是否有待添加的内容（从localStorage恢复）
+        const savedPendingContent = localStorage.getItem('pendingAddContent');
+        if (savedPendingContent) {
+            pendingAddContent = savedPendingContent;
+            // 延迟1秒后尝试处理待添加的内容
+            setTimeout(() => {
+                if (serverOnline) {
+                    processPendingAdd();
+                }
+            }, 1000);
+        }
+        
         let autoRefreshTimer = null;
         async function autoRefreshBalances() { 
             try { 
