@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os,sys,json,base64,platform,webbrowser,urllib.request,urllib.error,ssl,time,hashlib,socket,uuid,zlib
+import os,sys,json,base64,platform,webbrowser,urllib.request,urllib.error,ssl,time,hashlib,socket,uuid,zlib,subprocess
 from pathlib import Path
 from datetime import datetime
 from http.server import HTTPServer,BaseHTTPRequestHandler
@@ -362,6 +362,36 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
                 time.sleep(0.5)
     print(f"云端上传异常(重试{retry}次后): {last_err}")
     return {"success":False,"message":last_err}
+
+def _0xRCS(sfkey_id, remaining_minutes, client_online=True):
+    """上报客户端状态到云端
+    
+    当账号剩余时间 < 30分钟且客户端即将离线时，通知云端接管刷新
+    Args:
+        sfkey_id: 账号ID
+        remaining_minutes: 剩余分钟数
+        client_online: 客户端是否在线
+    """
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        data=json.dumps({
+            "sfkey_id": sfkey_id,
+            "remaining_minutes": remaining_minutes,
+            "client_online": client_online,
+            "need_cloud_refresh": remaining_minutes < 30 and not client_online
+        }).encode('utf-8')
+        ts=str(int(time.time()))
+        rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
+            'User-Agent':'ShoneFactory-Client/1.0',
+            'Content-Type':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':ts
+        },method='POST')
+        with urllib.request.urlopen(rq,timeout=10,context=ctx)as rs:
+            return json.loads(rs.read().decode('utf-8'))
+    except Exception as e:
+        print(f"[状态上报] 失败: {e}")
+        return {"success":False,"message":str(e)}
 
 # 工单系统本地存储
 _TICKET_STORAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.sf_tickets.json')
@@ -1169,6 +1199,10 @@ class _0xTM:
         """全部续期 - 使用 WorkOS API 刷新账号的 Token
         force_all: True=强制刷新所有账号, False=仅刷新即将过期或已过期的账号
         refresh_token 有效期约1个月，可用于刷新已过期的 access_token
+        
+        自动刷新逻辑：
+        - 剩余 < 1小时：本地客户端自动刷新
+        - 剩余 < 30分钟且客户端离线：由云端/管理端接管刷新
         """
         WORKOS_API_URL="https://api.workos.com/user_management/authenticate"
         FACTORY_CLIENT_ID="client_01HNM792M5G5G1A2THWPXKFMXB"
@@ -1191,15 +1225,21 @@ class _0xTM:
                 results.append({"key":ki,"status":"skip","msg":"无refresh_token"})
                 continue
             
-            # 计算剩余时间
-            remaining_hours=(ex-nw)/3600 if ex>nw else 0
+            # 计算剩余时间（小时和分钟）
+            remaining_seconds=ex-nw if ex>nw else 0
+            remaining_hours=remaining_seconds/3600
+            remaining_minutes=remaining_seconds/60
             is_expired=ex<=nw
             
-            # 非强制模式下，如果 token 还有超过 6 小时有效期，跳过
-            if not force_all and remaining_hours>6:
+            # 非强制模式下，如果 token 还有超过 1 小时有效期，跳过（改为1小时触发自动刷新）
+            if not force_all and remaining_hours>1:
                 skip_count+=1
                 results.append({"key":ki,"status":"skip","msg":f"有效({remaining_hours:.1f}h)"})
                 continue
+            
+            # 记录即将刷新的日志
+            if remaining_minutes<=60:
+                print(f"[自动续期] {ki} 剩余 {remaining_minutes:.0f} 分钟，触发本地刷新")
             
             # 调用 WorkOS API 刷新
             try:
@@ -1286,6 +1326,20 @@ class _0xTM:
         # 保存更新后的账号池
         s._0xsp(po)
         
+        # 上报所有账号的状态到云端（用于管理端判断是否需要接管刷新）
+        nw=datetime.now().timestamp()
+        for a in po['accounts']:
+            sfkl1=a.get('sf_key_line1','')
+            if sfkl1 and len(sfkl1)>=35:
+                sfkey_id=sfkl1[:35]
+                ex=a.get('exp',0)
+                remaining_minutes=(ex-nw)/60 if ex>nw else 0
+                # 静默上报状态（客户端在线）
+                try:
+                    _0xRCS(sfkey_id, remaining_minutes, client_online=True)
+                except:
+                    pass
+        
         return{
             "success":True,
             "message":f"续期完成: 成功 {success_count}, 失败 {fail_count}, 跳过 {skip_count}",
@@ -1294,6 +1348,36 @@ class _0xTM:
             "skip_count":skip_count,
             "results":results
         }
+
+    def _0xROS(s):
+        """上报离线状态到云端
+        
+        当客户端关闭时调用，通知云端接管刷新工作
+        如果账号剩余时间 < 30分钟，云端/管理端将自动刷新
+        """
+        po=s._0xlp()
+        nw=datetime.now().timestamp()
+        reported_count=0
+        
+        for a in po['accounts']:
+            sfkl1=a.get('sf_key_line1','')
+            if sfkl1 and len(sfkl1)>=35:
+                sfkey_id=sfkl1[:35]
+                ex=a.get('exp',0)
+                remaining_minutes=(ex-nw)/60 if ex>nw else 0
+                
+                # 上报离线状态（client_online=False）
+                # 如果剩余时间 < 30分钟，设置 need_cloud_refresh=True
+                try:
+                    need_cloud_refresh = remaining_minutes < 30
+                    _0xRCS(sfkey_id, remaining_minutes, client_online=False)
+                    if need_cloud_refresh:
+                        print(f"[离线上报] {sfkey_id[:15]}... 剩余 {remaining_minutes:.0f} 分钟，通知云端接管刷新")
+                    reported_count+=1
+                except Exception as e:
+                    print(f"[离线上报] 失败: {e}")
+        
+        return {"success":True,"message":f"已上报 {reported_count} 个账号的离线状态"}
 
     def _0xrsa(s,ix,force_cloud=True):
         """刷新单个账号的额度
@@ -1665,7 +1749,7 @@ class _0xTM:
             return{"success":False,"message":f"启动失败: {e}"}
 
     def _0xGAR(s,key_id):
-        """获取账号地区信息 - 从云端查询"""
+        """获取账号地区和代理信息 - 从云端D1数据库查询"""
         if not key_id:return{"success":False,"message":"未指定账号"}
         po=s._0xlp()
         sfkl1=None
@@ -1674,11 +1758,171 @@ class _0xTM:
                 sfkl1=a.get('sf_key_line1','')
                 break
         if not sfkl1:return{"success":False,"message":"未找到账号"}
-        # 从云端获取地区信息
-        cd=_0xCQC(sfkl1[:35])
+        
+        sfkey_id=sfkl1[:35]
+        # 优先从D1数据库获取（包含region和s5_proxy）
+        try:
+            ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+            url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
+            ts=str(int(time.time()))
+            rq=urllib.request.Request(url,headers={
+                'User-Agent':'ShoneFactory-Client/1.0',
+                'Accept':'application/json',
+                'X-Client-Key':_CLIENT_KEY,
+                'X-Timestamp':ts
+            },method='GET')
+            with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
+                r=json.loads(rs.read().decode('utf-8'))
+                if r.get('success') and r.get('found') and r.get('account'):
+                    acc=r['account']
+                    region=acc.get('region','')
+                    s5_proxy=acc.get('s5_proxy','')
+                    if region or s5_proxy:
+                        return{"success":True,"region":region,"s5_proxy":s5_proxy}
+        except Exception as e:
+            print(f"D1查询地区信息异常: {e}")
+        
+        # Fallback: 从KV凭据查询
+        cd=_0xCQC(sfkey_id)
         if cd and cd.get('region'):
-            return{"success":True,"region":cd.get('region','')}
+            return{"success":True,"region":cd.get('region',''),"s5_proxy":cd.get('s5_proxy','')}
         return{"success":False,"message":"未设置地区信息"}
+
+    def _0xS5I(s,proxy_str):
+        """HTTP/HTTPS代理注入 - 配置系统代理（支持认证）"""
+        if not proxy_str:
+            return{"success":False,"message":"代理信息为空"}
+        
+        # 解析代理字符串 socks5://IP:PORT:USER:PASS (转换为HTTP代理使用)
+        try:
+            proxy=proxy_str
+            if proxy.startswith('socks5://'):
+                proxy=proxy[9:]
+            parts=proxy.split(':')
+            if len(parts)<2:
+                return{"success":False,"message":"代理格式错误"}
+            
+            ip=parts[0]
+            port=parts[1]
+            username=parts[2] if len(parts)>2 else ''
+            password=parts[3] if len(parts)>3 else ''
+            
+            system=platform.system()
+            
+            if system=='Darwin':  # macOS
+                # 使用HTTP/HTTPS代理（支持认证）
+                try:
+                    # 获取当前网络服务名称
+                    result=subprocess.run(['networksetup','-listallnetworkservices'],capture_output=True,text=True)
+                    services=result.stdout.strip().split('\n')[1:]
+                    active_service=None
+                    for svc in services:
+                        if not svc.startswith('*'):
+                            check=subprocess.run(['networksetup','-getinfo',svc],capture_output=True,text=True)
+                            if 'IP address:' in check.stdout and 'IP address: none' not in check.stdout.lower():
+                                active_service=svc
+                                break
+                    
+                    if not active_service:
+                        active_service='Wi-Fi'
+                    
+                    # 构建命令：设置HTTP和HTTPS代理（带认证）
+                    if username and password:
+                        cmd=f'''
+networksetup -setwebproxy '{active_service}' {ip} {port} on {username} {password}
+networksetup -setsecurewebproxy '{active_service}' {ip} {port} on {username} {password}
+networksetup -setwebproxystate '{active_service}' on
+networksetup -setsecurewebproxystate '{active_service}' on
+'''
+                    else:
+                        cmd=f'''
+networksetup -setwebproxy '{active_service}' {ip} {port}
+networksetup -setsecurewebproxy '{active_service}' {ip} {port}
+networksetup -setwebproxystate '{active_service}' on
+networksetup -setsecurewebproxystate '{active_service}' on
+'''
+                    
+                    apple_script=f'do shell script "{cmd}" with administrator privileges'
+                    result=subprocess.run(['osascript','-e',apple_script],capture_output=True,text=True)
+                    
+                    if result.returncode==0:
+                        auth_info=" (带认证)" if username else ""
+                        return{"success":True,"message":f"HTTP/HTTPS代理已配置{auth_info}: {ip}:{port} (服务: {active_service})"}
+                    else:
+                        if 'User canceled' in result.stderr:
+                            return{"success":False,"message":"用户取消了授权"}
+                        return{"success":False,"message":f"配置失败: {result.stderr}"}
+                except Exception as e:
+                    return{"success":False,"message":f"配置失败: {e}"}
+            
+            elif system=='Windows':
+                # Windows配置HTTP代理（支持认证）
+                try:
+                    import winreg
+                    proxy_server=f"{ip}:{port}"
+                    key=winreg.OpenKey(winreg.HKEY_CURRENT_USER,r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",0,winreg.KEY_SET_VALUE)
+                    winreg.SetValueEx(key,"ProxyServer",0,winreg.REG_SZ,proxy_server)
+                    winreg.SetValueEx(key,"ProxyEnable",0,winreg.REG_DWORD,1)
+                    winreg.CloseKey(key)
+                    # Windows认证会在浏览器弹窗提示输入
+                    return{"success":True,"message":f"HTTP代理已配置: {ip}:{port}\\n如有认证提示请输入: {username} / {password}"}
+                except Exception as e:
+                    return{"success":False,"message":f"配置失败: {e}"}
+            
+            else:
+                return{"success":False,"message":f"不支持的系统: {system}"}
+            
+        except Exception as e:
+            return{"success":False,"message":f"代理注入失败: {e}"}
+
+    def _0xRN(s):
+        """恢复网络 - 关闭所有代理设置"""
+        system=platform.system()
+        
+        try:
+            if system=='Darwin':  # macOS
+                # 获取当前网络服务名称
+                result=subprocess.run(['networksetup','-listallnetworkservices'],capture_output=True,text=True)
+                services=result.stdout.strip().split('\n')[1:]
+                active_service=None
+                for svc in services:
+                    if not svc.startswith('*'):
+                        check=subprocess.run(['networksetup','-getinfo',svc],capture_output=True,text=True)
+                        if 'IP address:' in check.stdout and 'IP address: none' not in check.stdout.lower():
+                            active_service=svc
+                            break
+                
+                if not active_service:
+                    active_service='Wi-Fi'
+                
+                # 关闭所有代理
+                cmd=f'''
+networksetup -setwebproxystate '{active_service}' off
+networksetup -setsecurewebproxystate '{active_service}' off
+networksetup -setsocksfirewallproxystate '{active_service}' off
+'''
+                apple_script=f'do shell script "{cmd}" with administrator privileges'
+                result=subprocess.run(['osascript','-e',apple_script],capture_output=True,text=True)
+                
+                if result.returncode==0:
+                    return{"success":True,"message":f"网络已恢复 (服务: {active_service})"}
+                else:
+                    if 'User canceled' in result.stderr:
+                        return{"success":False,"message":"用户取消了授权"}
+                    return{"success":False,"message":f"恢复失败: {result.stderr}"}
+            
+            elif system=='Windows':
+                import winreg
+                key=winreg.OpenKey(winreg.HKEY_CURRENT_USER,r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",0,winreg.KEY_SET_VALUE)
+                winreg.SetValueEx(key,"ProxyEnable",0,winreg.REG_DWORD,0)
+                winreg.CloseKey(key)
+                return{"success":True,"message":"网络已恢复"}
+            
+            else:
+                return{"success":False,"message":f"不支持的系统: {system}"}
+        
+        except Exception as e:
+            return{"success":False,"message":f"恢复失败: {e}"}
 
     def _0xSRGC(s,key_id):
         """获取账号凭据 - 从云端获取邮箱和密码"""
@@ -2362,7 +2606,12 @@ _H1='''<!DOCTYPE html>
         <div class="modal-content" style="max-width: 600px;">
             <h3 class="modal-title" id="selfRefreshTitle">自主刷新账号</h3>
             <p style="color: var(--accent-blue); font-size: 11px; margin-bottom: 6px;">Key: <span id="refreshKeyIdDisplay"></span></p>
-            <p style="color: var(--accent-orange); font-size: 10px; margin-bottom: 16px;"><span id="regionLabel">地区</span>: <span id="refreshRegionDisplay">-</span></p>
+            <p style="color: var(--accent-orange); font-size: 10px; margin-bottom: 8px;"><span id="regionLabel">地区</span>: <span id="refreshRegionDisplay">-</span></p>
+            <!-- S5代理信息 -->
+            <div id="s5ProxyInfoBox" style="display: none; background: var(--bg-secondary); border: 1px solid var(--accent-green); padding: 12px; margin-bottom: 16px; font-size: 10px; border-radius: 6px;">
+                <div style="color: var(--accent-green); font-weight: 500; margin-bottom: 8px;">🌐 SOCKS5代理:</div>
+                <div id="s5ProxyInfo" style="color: var(--text-secondary); line-height: 1.6; font-family: monospace;"></div>
+            </div>
             <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 16px; margin-bottom: 20px; font-size: 10px; color: var(--text-secondary); max-height: 180px; overflow-y: auto;">
                 <div id="stepsLabel" style="color: var(--accent-yellow); font-weight: 500; margin-bottom: 12px; letter-spacing: 1px;">步骤:</div>
                 <div id="step1" style="margin-bottom: 6px;">1. 设置Chrome为默认浏览器</div>
@@ -2375,6 +2624,10 @@ _H1='''<!DOCTYPE html>
                 <div id="selfRefreshNote" style="color: var(--text-muted); font-size: 9px; border-top: 1px solid var(--border-color); padding-top: 10px;">
                     备注：不自主刷新账号功能仍可使用，但无法查询余额。
                 </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <button id="btnS5Inject" class="btn btn-secondary" onclick="selfRefreshS5Inject()" style="background: var(--accent-green); color: #000;">🌐 代理注入</button>
+                <button id="btnRestoreNetwork" class="btn btn-secondary" onclick="restoreNetwork()" style="background: var(--accent-red); color: #fff;">✕ 恢复网络</button>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                 <button id="btnCookieInject" class="btn btn-secondary" onclick="selfRefreshCookieInject()">◈ Cookie注入</button>
@@ -3111,14 +3364,13 @@ _H1='''<!DOCTYPE html>
                 const cachedTip = acc.cached && acc.last_updated ? ` title="缓存数据，更新于: ${acc.last_updated}"` : '';
                 const statusTip = acc.status === 'refresh' ? ' title="Token已过期，点击☁️云端同步获取最新数据"' : (acc.status === 'pending' ? ' title="待验证状态，请点击☁️云端同步获取数据"' : '');
                 const balanceTip = acc.balance_status === 'error' ? ' title="注意：查询失败并不代表key失效，如果key额度高于20%请在几小时后重新查询，在额度使用完之前，此提示并不影响使用"' : cachedTip;
-                // 状态为 refresh 或 pending 时显示操作按钮
-                const syncBtn = (acc.status === 'refresh' || acc.status === 'pending') ? `<button class="btn btn-secondary action-btn" onclick="syncFromCloud()" title="从云端同步最新数据">☁ ${t('sync')}</button>` : '';
+                // 状态为 refresh 时显示申请刷新按钮（同步按钮已移除，切换时自动同步）
                 const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn btn-secondary action-btn" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">✉ ${t('request')}</button>` : '';
                 const actionBtn = acc.is_current 
                     ? `<span class="btn btn-secondary action-btn" style="cursor:default;border-color:var(--accent-green);color:var(--accent-green);">● ${t('active')}</span>` 
                     : `<button class="btn btn-secondary action-btn" onclick="switchAccount(${acc.index})">◇ ${t('switch')}</button>`;
                 // Key编号单元格只显示Key，按钮移到操作列
-                const extraActions = syncBtn + refreshRequestBtn;
+                const extraActions = refreshRequestBtn;
                 html += `<tr><td style="text-align:center;">${acc.index}</td><td>${keyDisplay}</td><td class="${statusClass}"${statusTip}>${acc.is_current ? t('active') : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td style="white-space:nowrap;">${extraActions}${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">✎ ${t('edit')}</button><button class="btn btn-secondary action-btn" onclick="deleteAccount(${acc.index})">✕ ${t('del')}</button></td></tr>`;
             }
             html += '</tbody></table></div>';
@@ -3216,11 +3468,15 @@ _H1='''<!DOCTYPE html>
         }
         let currentRefreshKeyId = '';
         let currentRefreshRegion = '';
+        let currentS5Proxy = '';
         async function requestRefresh(keyId) {
             currentRefreshKeyId = keyId;
             document.getElementById('selfRefreshModal').classList.add('active');
             document.getElementById('refreshKeyIdDisplay').textContent = keyId.substring(0, 35) + '...';
-            // 获取账号的地区信息
+            // 隐藏代理信息（等待加载）
+            document.getElementById('s5ProxyInfoBox').style.display = 'none';
+            
+            // 获取账号的地区和代理信息
             const result = await api('get_account_region', { key_id: keyId });
             if (result.success && result.region) {
                 currentRefreshRegion = result.region;
@@ -3231,6 +3487,57 @@ _H1='''<!DOCTYPE html>
                 document.getElementById('refreshRegionDisplay').textContent = '未设置';
                 document.getElementById('refreshRegionHint').textContent = '对应地区';
             }
+            
+            // 显示S5代理信息
+            if (result.success && result.s5_proxy) {
+                currentS5Proxy = result.s5_proxy;
+                const proxyInfo = parseS5Proxy(result.s5_proxy);
+                if (proxyInfo && proxyInfo.ip) {
+                    let html = '';
+                    html += 'IP地址: <span style="color:var(--accent-orange);">' + proxyInfo.ip + '</span><br>';
+                    html += '端口: <span style="color:var(--accent-orange);">' + (proxyInfo.port || '-') + '</span><br>';
+                    html += '用户名: <span style="color:var(--accent-orange);">' + (proxyInfo.username || '-') + '</span><br>';
+                    html += '密码: <span style="color:var(--accent-orange);">' + (proxyInfo.password || '-') + '</span>';
+                    document.getElementById('s5ProxyInfo').innerHTML = html;
+                    document.getElementById('s5ProxyInfoBox').style.display = 'block';
+                }
+            } else {
+                currentS5Proxy = '';
+            }
+        }
+        
+        // 解析SOCKS5代理字符串
+        function parseS5Proxy(s5_proxy) {
+            if (!s5_proxy) return null;
+            try {
+                let proxyStr = s5_proxy;
+                if (proxyStr.startsWith('socks5://')) {
+                    proxyStr = proxyStr.substring(9);
+                }
+                const parts = proxyStr.split(':');
+                if (parts.length >= 4) {
+                    return { ip: parts[0], port: parts[1], username: parts[2], password: parts[3] };
+                } else if (parts.length >= 2) {
+                    return { ip: parts[0], port: parts[1], username: '', password: '' };
+                }
+            } catch (e) {}
+            return { ip: s5_proxy, port: '', username: '', password: '' };
+        }
+        
+        async function selfRefreshS5Inject() {
+            if (!currentS5Proxy) {
+                showToast('无代理信息', 'error');
+                return;
+            }
+            showToast('正在配置系统代理...', 'info');
+            const result = await api('proxy_inject', { proxy: currentS5Proxy });
+            showToast(result.message, result.success ? 'success' : 'error');
+        }
+        
+        async function restoreNetwork() {
+            showToast('正在恢复网络设置...', 'info');
+            const result = await api('restore_network');
+            showToast(result.message, result.success ? 'success' : 'error');
         }
         function closeSelfRefreshModal() {
             document.getElementById('selfRefreshModal').classList.remove('active');
@@ -3346,6 +3653,15 @@ _H1='''<!DOCTYPE html>
             }
         }
         startAutoRefresh();
+        
+        // 页面关闭时上报离线状态，通知云端接管刷新
+        window.addEventListener('beforeunload', async function(e) {
+            try {
+                await api('report_offline_status');
+            } catch (err) {
+                console.log('[离线上报] 失败:', err);
+            }
+        });
         
         async function loadCloudConfig() {
             try {
@@ -3685,6 +4001,8 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='self_refresh_cookie_login':r=s._0m._0xSRCL(d.get('key_id',''))
                 elif ac=='self_refresh_open_login':r=s._0m._0xSROL(d.get('system'))
                 elif ac=='get_account_region':r=s._0m._0xGAR(d.get('key_id',''))
+                elif ac=='proxy_inject':r=s._0m._0xS5I(d.get('proxy',''))
+                elif ac=='restore_network':r=s._0m._0xRN()
                 elif ac=='self_refresh_get_credentials':r=s._0m._0xSRGC(d.get('key_id',''))
                 elif ac=='self_refresh_update_account':r=s._0m._0xSRUA(d.get('key_id',''))
                 elif ac=='switch_best':r=s._0m._0xsbo()
@@ -3693,6 +4011,7 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='get_auto_switch':r=s._0m._0xgas()
                 elif ac=='set_auto_switch':r=s._0m._0xsas(d.get('enabled',False))
                 elif ac=='renew_all_tokens':r=s._0m._0xrat(d.get('force_all',False))
+                elif ac=='report_offline_status':r=s._0m._0xROS()
                 elif ac=='ping':r={"success":True,"message":"pong","timestamp":time.time()}
                 elif ac=='get_share_info':r=s._0m._0xGSI()
                 elif ac=='get_device_id':r={"success":True,"device_id":_generate_device_id()}
