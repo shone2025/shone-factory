@@ -692,10 +692,10 @@ _0xCHK()
 _0k=lambda s,k=0x5F:''.join(chr(ord(c)^k)for c in s)
 _0e=lambda s:base64.b64encode(s.encode()).decode()
 _0d=lambda s:base64.b64decode(s).decode()
-_S1=_0k('\x3e\x2e\x35\x3b\x71\x3f\x28\x38\x39')
+_S1=_0k('\x3e\x2a\x2b\x37\x71\x35\x2c\x30\x31')
 _S2=_0k('\x3e\x30\x30\x3a\x28\x28\x70\x35\x38\x3c\x3a\x39')
 _S3=_0k('\x27\x3a\x3b\x27\x3a\x28\x3b\x70\x35\x38\x3c\x3a\x39')
-_S4=_0k('\x71\x3b\x3e\x30\x35\x38\x27\x2c')
+_S4=_0k('\x71\x39\x3e\x3c\x2b\x30\x2d\x26')
 _S5=_0k('\x14\x28\x3a\x27\x11\x27\x38\x3b\x3c\x3f\x3a')
 _S6=_0d('aHR0cHM6Ly9hcHAuZmFjdG9yeS5haS9hcGkvb3JnYW5pemF0aW9uL21lbWJlcnMvY2hhdC11c2FnZQ==')
 _S7=_0d('aHR0cHM6Ly9hcGkuZmFjdG9yeS5haS9jbGkvYXV0aC9yZWZyZXNo')
@@ -2652,7 +2652,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.7</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.8</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
