@@ -725,7 +725,7 @@ class _0xTM:
 
     def _0xfp(s):
         _0xCHK()
-        if platform.system()=='Windows':return Path(os.environ.get(_S5,''))/_S4[1:]
+        if platform.system()=='Windows':return Path(os.environ.get(_S5,''))/_S4
         return Path.home()/_S4
 
     def _0xdj(s,t):
@@ -1873,7 +1873,7 @@ class _0xTM:
         
         def clear_auth_json():
             """清理auth.json"""
-            auth_file=Path.home()/'.factory'/'auth.json'
+            auth_file=s._0xfp()/'auth.json'
             if auth_file.exists():
                 try:
                     auth_file.unlink()
@@ -2138,7 +2138,7 @@ networksetup -setsocksfirewallproxystate '{active_service}' off
     def _0xSRUA(s,key_id):
         """更新账号 - 检查auth.json并上传到云端"""
         if not key_id:return{"success":False,"message":"未指定账号"}
-        auth_file=Path.home()/'.factory'/'auth.json'
+        auth_file=s._0xfp()/'auth.json'
         if not auth_file.exists():
             return{"success":False,"message":"auth.json不存在，请先完成登录"}
         try:
@@ -2650,7 +2650,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.4</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.6</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
