@@ -1186,10 +1186,9 @@ class _0xTM:
         a=po['accounts'][idx]
         at=a.get(_S2,'');rt=a.get(_S3,'');sfkl1=a.get('sf_key_line1','')
         
-        # 检查 token 是否过期，如果过期尝试从云端获取新 token
-        ex=a.get('exp',0);nw=datetime.now().timestamp()
-        if ex<=nw and sfkl1:
-            # Token 过期，尝试从云端获取最新 token
+        # v3.2.6修复: 始终尝试从云端获取最新 token（而非仅在过期时）
+        # 这与管理端的"云端下载"功能保持一致
+        if sfkl1:
             cd=_0xCQ(sfkl1[:35])
             if cd and cd.get('access_token') and cd.get('refresh_token'):
                 at=cd.get('access_token','')
@@ -1200,6 +1199,9 @@ class _0xTM:
                 pl=s._0xdj(at)
                 if pl:po['accounts'][idx]['exp']=pl.get('exp',0)
                 s._0xsp(po)
+                print(f"[云端下载] 成功获取最新Token: {a.get('key_id','')[:20]}...")
+            else:
+                print(f"[云端下载] 云端无数据，使用本地Token")
         
         if not at or not rt:return{"success":False,"message":"账号信息不完整"}
         if s._0xwa(at,rt):
@@ -2650,7 +2652,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.6</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.7</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
