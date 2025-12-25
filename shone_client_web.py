@@ -1398,17 +1398,16 @@ class _0xTM:
             }
 
     def _0xrat(s,force_all=False):
-        """全部续期 - 使用 WorkOS API 刷新账号的 Token
+        """全部续期 - 通过云端 API 刷新账号的 Token
         force_all: True=强制刷新所有账号, False=仅刷新即将过期或已过期的账号
-        refresh_token 有效期约1个月，可用于刷新已过期的 access_token
         
-        v3.2.4 新逻辑：
+        v3.3.1: 敏感信息(FACTORY_CLIENT_ID)现在仅存储在云端
+        - 客户端发送 refresh_token 到云端
+        - 云端调用 WorkOS API 刷新并返回新 token
         - 正在使用的账号：不主动刷新，仅检测token变化并同步到云端
         - 待使用的账号：剩余<1小时时由云端接管刷新
         - 使用率>=95%：停止刷新续期，提醒用户更换账号
         """
-        WORKOS_API_URL="https://api.workos.com/user_management/authenticate"
-        FACTORY_CLIENT_ID="client_01HNM792M5G5G1A2THWPXKFMXB"
         
         po=s._0xlp()
         success_count=0
@@ -1491,83 +1490,66 @@ class _0xTM:
             
             # 记录即将刷新的日志（仅强制模式或已过期时本地刷新）
             if is_expired:
-                print(f"[本地续期] {ki} 已过期，触发本地刷新")
+                print(f"[云端续期] {ki} 已过期，请求云端刷新")
             
-            # 调用 WorkOS API 刷新
+            # v3.3.1: 调用云端 API 刷新 (敏感信息不暴露在客户端)
             try:
-                data=urlencode({
-                    'grant_type':'refresh_token',
-                    'client_id':FACTORY_CLIENT_ID,
-                    'refresh_token':rt
+                ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+                sfkey_id=sfkl1[:35] if sfkl1 and len(sfkl1)>=35 else ''
+                refresh_data=json.dumps({
+                    'refresh_token':rt,
+                    'sfkey_id':sfkey_id
                 }).encode('utf-8')
                 
                 req=urllib.request.Request(
-                    WORKOS_API_URL,
-                    data=data,
-                    headers={'Content-Type':'application/x-www-form-urlencoded'},
+                    f"{_CLOUD_URL}/api/refresh-token",
+                    data=refresh_data,
+                    headers={
+                        'Content-Type':'application/json',
+                        'X-Client-Key':_CLIENT_KEY,
+                        'X-Timestamp':str(int(time.time()))
+                    },
                     method='POST'
                 )
                 
-                with urllib.request.urlopen(req,timeout=30)as resp:
+                with urllib.request.urlopen(req,timeout=30,context=ctx)as resp:
                     result=json.loads(resp.read().decode('utf-8'))
-                    new_at=result.get('access_token','')
-                    new_rt=result.get('refresh_token','')
                     
-                    if new_at:
-                        po['accounts'][i][_S2]=new_at
-                        if new_rt:
-                            po['accounts'][i][_S3]=new_rt
-                        # 解析新 token 的过期时间
-                        new_pl=s._0xdj(new_at)
-                        new_exp=0
-                        if new_pl:
-                            new_exp=new_pl.get('exp',0)
-                            po['accounts'][i]['exp']=new_exp
+                    if result.get('success'):
+                        new_at=result.get('access_token','')
+                        new_rt=result.get('refresh_token','')
+                        new_exp=result.get('exp',0)
                         
-                        # 【关键】刷新成功后同步新 token 到云端，确保其他设备能获取最新的 refresh_token
-                        sfkl1=a.get('sf_key_line1','')
-                        if sfkl1 and len(sfkl1)>=35:
-                            try:
-                                sfkey_id=sfkl1[:35]
-                                org_id=a.get('org_id','')
-                                sync_data=json.dumps({
-                                    "sfkey_id":sfkey_id,
-                                    "access_token":new_at,
-                                    "refresh_token":new_rt if new_rt else rt,
-                                    "email":a.get('email',''),
-                                    "exp":new_exp,
-                                    "org_id":org_id
-                                }).encode('utf-8')
-                                sync_req=urllib.request.Request(
-                                    f"{_CU}/api/update",
-                                    data=sync_data,
-                                    headers={'Content-Type':'application/json','X-API-Key':_AS},
-                                    method='POST'
-                                )
-                                ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
-                                with urllib.request.urlopen(sync_req,timeout=10,context=ctx)as sync_resp:
-                                    pass  # 静默同步
-                            except:
-                                pass  # 同步失败不影响本地刷新结果
-                        
-                        success_count+=1
-                        status_msg="已过期->刷新成功" if is_expired else "刷新成功"
-                        results.append({"key":ki,"status":"success","msg":status_msg})
+                        if new_at:
+                            po['accounts'][i][_S2]=new_at
+                            if new_rt:
+                                po['accounts'][i][_S3]=new_rt
+                            if new_exp:
+                                po['accounts'][i]['exp']=new_exp
+                            
+                            success_count+=1
+                            status_msg="已过期->刷新成功" if is_expired else "刷新成功"
+                            results.append({"key":ki,"status":"success","msg":status_msg})
+                        else:
+                            fail_count+=1
+                            results.append({"key":ki,"status":"fail","msg":"无access_token"})
                     else:
+                        # 云端返回错误
+                        error_desc=result.get('error_description',result.get('error','刷新失败'))
+                        if 'already exchanged' in error_desc.lower():
+                            results.append({"key":ki,"status":"fail","msg":"token已使用,需重新登录"})
+                        elif 'expired' in error_desc.lower():
+                            results.append({"key":ki,"status":"fail","msg":"refresh_token已过期"})
+                        else:
+                            results.append({"key":ki,"status":"fail","msg":error_desc[:30]})
                         fail_count+=1
-                        results.append({"key":ki,"status":"fail","msg":"无access_token"})
                         
             except urllib.error.HTTPError as e:
                 error_body=e.read().decode('utf-8')
                 try:
                     error_json=json.loads(error_body)
                     error_desc=error_json.get('error_description',error_json.get('error',''))
-                    if 'already exchanged' in error_desc.lower():
-                        results.append({"key":ki,"status":"fail","msg":"token已使用,需重新登录"})
-                    elif 'expired' in error_desc.lower():
-                        results.append({"key":ki,"status":"fail","msg":"refresh_token已过期"})
-                    else:
-                        results.append({"key":ki,"status":"fail","msg":error_desc[:30]})
+                    results.append({"key":ki,"status":"fail","msg":error_desc[:30] if error_desc else f"HTTP{e.code}"})
                 except:
                     results.append({"key":ki,"status":"fail","msg":f"HTTP{e.code}"})
                 fail_count+=1
@@ -2733,7 +2715,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.0</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.1</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
