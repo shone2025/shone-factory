@@ -901,27 +901,18 @@ class _0xTM:
         return'','',''
 
     def _0xwa(s,at,rt):
-        """写入 auth.json 到 Cursor 配置目录"""
+        """写入 auth.json 到配置目录"""
         _0xCHK()
-        # 直接写入 .cursor-tutor/auth.json (Cursor 的认证文件位置)
+        # 使用 _0xfp() 获取正确的配置目录（与读取路径一致）
         try:
-            if platform.system()=='Windows':
-                # Windows: %APPDATA%\.cursor-tutor\auth.json
-                appdata=os.environ.get('APPDATA','')
-                if appdata:
-                    auth_dir=Path(appdata)/'.cursor-tutor'
-                else:
-                    auth_dir=Path.home()/'.cursor-tutor'
-            else:
-                # macOS/Linux: ~/.cursor-tutor/auth.json
-                auth_dir=Path.home()/'.cursor-tutor'
+            auth_dir=s._0xfp()
             
             auth_dir.mkdir(parents=True,exist_ok=True)
-            auth_file=auth_dir/'auth.json'
+            auth_file=auth_dir/_S1
             
             # 备份旧文件
             if auth_file.exists():
-                bk=auth_dir/'auth.json.bak'
+                bk=auth_dir/(_S1+'.bak')
                 if bk.exists():bk.unlink()
                 import shutil
                 shutil.copy(auth_file,bk)
