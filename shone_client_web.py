@@ -4185,10 +4185,16 @@ class _0xRH(BaseHTTPRequestHandler):
     _0m=_0xTM()
     def log_message(s,f,*a):pass
     def _0xsj(s,d,st=200):
-        s.send_response(st);s.send_header('Content-Type','application/json; charset=utf-8');s.send_header('Access-Control-Allow-Origin','*');s.end_headers()
-        s.wfile.write(json.dumps(d,ensure_ascii=False).encode('utf-8'))
+        try:
+            s.send_response(st);s.send_header('Content-Type','application/json; charset=utf-8');s.send_header('Access-Control-Allow-Origin','*');s.end_headers()
+            s.wfile.write(json.dumps(d,ensure_ascii=False).encode('utf-8'))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass  # 客户端已断开，静默忽略
     def _0xsh(s,h):
-        s.send_response(200);s.send_header('Content-Type','text/html; charset=utf-8');s.end_headers();s.wfile.write(h.encode('utf-8'))
+        try:
+            s.send_response(200);s.send_header('Content-Type','text/html; charset=utf-8');s.end_headers();s.wfile.write(h.encode('utf-8'))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass
     def do_GET(s):
         _0xCHK()
         if s.path=='/'or s.path=='/index.html':s._0xsh(_H1)
@@ -4236,8 +4242,18 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='get_my_tickets':r=_0xGMT()
                 else:r={"success":False,"message":"未知操作"}
                 s._0xsj(r)
-            except Exception as e:s._0xsj({"success":False,"message":str(e)},500)
-        else:s.send_response(404);s.end_headers()
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass  # 客户端已断开，静默忽略
+            except Exception as e:
+                try:
+                    s._0xsj({"success":False,"message":str(e)},500)
+                except:
+                    pass
+        else:
+            try:
+                s.send_response(404);s.end_headers()
+            except:
+                pass
 
 def _start_heartbeat_thread():
     """启动心跳线程"""
