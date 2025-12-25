@@ -1,0 +1,18 @@
+name: Sync Client to Cloud
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'shone_client_web.py'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync to Cloud
+        run: |
+          curl -X POST "https://shone.ggff.net/api/sync-client" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${{ secrets.CLOUD_API_KEY }}"
