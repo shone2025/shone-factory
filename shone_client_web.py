@@ -221,6 +221,87 @@ def _0xGVR():
     except Exception as e:
         return {"success":False,"message":f"检查失败: {e}"}
 
+def _0xAU():
+    """从云端下载并更新客户端主文件"""
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        no_proxy_handler=urllib.request.ProxyHandler({})
+        opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
+        rq=urllib.request.Request(f"{_CLOUD_URL}/api/download-client",headers={
+            'User-Agent':'ShoneFactory-Client/1.0',
+            'Accept':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':str(int(time.time()))
+        },method='GET')
+        with opener.open(rq,timeout=30)as rs:
+            r=json.loads(rs.read().decode('utf-8'))
+            if r.get('success') and r.get('code'):
+                # 获取当前脚本路径
+                current_file=Path(__file__).resolve()
+                backup_file=current_file.with_suffix('.py.bak')
+                
+                # 备份当前文件
+                if current_file.exists():
+                    import shutil
+                    if backup_file.exists():
+                        backup_file.unlink()
+                    shutil.copy(current_file, backup_file)
+                
+                # 写入新文件
+                with open(current_file,'w',encoding='utf-8')as f:
+                    f.write(r.get('code'))
+                
+                return {
+                    "success":True,
+                    "message":f"更新成功! 新版本: {r.get('version','unknown')}",
+                    "version":r.get('version'),
+                    "need_restart":True
+                }
+            else:
+                return {"success":False,"message":r.get('message','下载失败')}
+    except urllib.error.URLError as e:
+        return {"success":False,"message":f"网络错误: {e.reason}"}
+    except Exception as e:
+        return {"success":False,"message":f"更新失败: {e}"}
+
+def _0xCAU():
+    """检查并自动更新（启动时调用）"""
+    try:
+        # 获取云端版本
+        vr=_0xGVR()
+        if not vr.get('success'):
+            return {"checked":True,"updated":False,"message":"无法检查更新"}
+        
+        cloud_version=vr.get('version',{}).get('current','0.0.0')
+        
+        # 获取本地版本（从文件中提取）
+        local_version='0.0.0'
+        try:
+            with open(Path(__file__),'r',encoding='utf-8')as f:
+                content=f.read()
+                import re
+                m=re.search(r'V(\d+\.\d+\.\d+)',content)
+                if m:local_version=m.group(1)
+        except:pass
+        
+        # 版本比较
+        def version_tuple(v):
+            return tuple(map(int,v.split('.')))
+        
+        if version_tuple(cloud_version)>version_tuple(local_version):
+            print(f"[自动更新] 发现新版本: {local_version} -> {cloud_version}")
+            result=_0xAU()
+            if result.get('success'):
+                print(f"[自动更新] 更新成功，请重启程序")
+                return {"checked":True,"updated":True,"message":f"已更新到 {cloud_version}，请重启程序"}
+            else:
+                print(f"[自动更新] 更新失败: {result.get('message')}")
+                return {"checked":True,"updated":False,"message":result.get('message')}
+        else:
+            return {"checked":True,"updated":False,"message":"已是最新版本"}
+    except Exception as e:
+        return {"checked":True,"updated":False,"message":f"检查更新出错: {e}"}
+
 def _0xRRF(sfkey_id):
     """向云端提交刷新请求"""
     if not sfkey_id:
@@ -2652,7 +2733,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.2.9</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.0</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
@@ -3907,20 +3988,45 @@ _H1='''<!DOCTYPE html>
         }
         
         async function checkVersion() {
-            showToast(t('checkingUpdate'), 'info');
+            showToast(currentLang === 'zh' ? '正在检查更新...' : 'Checking for updates...', 'info');
             try {
                 const result = await api('check_version');
                 if (result.success && result.version) {
                     const v = result.version;
-                    const msg = `${currentLang === 'zh' ? '当前版本' : 'Current version'}: ${v.current || '1.0.0'}\\n\\n${currentLang === 'zh' ? '更新日志' : 'Changelog'}:\\n${v.changelog || (currentLang === 'zh' ? '无' : 'None')}`;
-                    if (confirm(msg + `\\n\\n${currentLang === 'zh' ? '点击确定下载最新版本' : 'Click OK to download latest version'}`)) {
-                        window.open(v.download_url || 'https://github.com/shone2025/shone-factory/releases/latest', '_blank');
+                    const currentVersion = document.querySelector('h1 span')?.textContent?.replace('V', '') || '0.0.0';
+                    const cloudVersion = v.current || '0.0.0';
+                    
+                    // 比较版本
+                    const current = currentVersion.split('.').map(Number);
+                    const cloud = cloudVersion.split('.').map(Number);
+                    const needUpdate = cloud[0] > current[0] || 
+                        (cloud[0] === current[0] && cloud[1] > current[1]) ||
+                        (cloud[0] === current[0] && cloud[1] === current[1] && cloud[2] > current[2]);
+                    
+                    if (needUpdate) {
+                        const msg = currentLang === 'zh' 
+                            ? `发现新版本: ${currentVersion} → ${cloudVersion}\n\n点击确定自动下载并更新（更新后需重启程序）`
+                            : `New version available: ${currentVersion} → ${cloudVersion}\n\nClick OK to download and update (restart required)`;
+                        
+                        if (confirm(msg)) {
+                            showToast(currentLang === 'zh' ? '正在下载更新...' : 'Downloading update...', 'info');
+                            const updateResult = await api('auto_update');
+                            if (updateResult.success) {
+                                alert(currentLang === 'zh' 
+                                    ? `更新成功！\n新版本: ${updateResult.version}\n\n请关闭并重新启动程序以使用新版本。`
+                                    : `Update successful!\nNew version: ${updateResult.version}\n\nPlease close and restart the program.`);
+                            } else {
+                                showToast(updateResult.message || (currentLang === 'zh' ? '更新失败' : 'Update failed'), 'error');
+                            }
+                        }
+                    } else {
+                        showToast(currentLang === 'zh' ? '已是最新版本 ✓' : 'Already up to date ✓', 'success');
                     }
                 } else {
-                    showToast(result.message || t('checkFailed'), 'error');
+                    showToast(result.message || (currentLang === 'zh' ? '检查更新失败' : 'Check update failed'), 'error');
                 }
             } catch (e) {
-                showToast(t('checkFailed') + ': ' + e, 'error');
+                showToast((currentLang === 'zh' ? '检查更新失败' : 'Check update failed') + ': ' + e, 'error');
             }
         }
         
@@ -4241,6 +4347,7 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='get_device_id':r={"success":True,"device_id":_generate_device_id()}
                 elif ac=='submit_ticket':r=_0xSTK(d)
                 elif ac=='get_my_tickets':r=_0xGMT()
+                elif ac=='auto_update':r=_0xAU()  # 自动更新
                 else:r={"success":False,"message":"未知操作"}
                 s._0xsj(r)
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
@@ -4289,6 +4396,20 @@ def _0xM():
         except:
             pass
     threading.Thread(target=register_async, daemon=True).start()
+    
+    # 启动时自动检查更新
+    print("  正在检查更新...")
+    try:
+        update_result = _0xCAU()
+        if update_result.get('updated'):
+            print(f"  ✅ {update_result.get('message')}")
+            print("  ⚠️  请重新启动程序以使用新版本")
+            input("  按回车键退出...")
+            return
+        elif update_result.get('checked'):
+            print(f"  ℹ️  {update_result.get('message')}")
+    except Exception as e:
+        print(f"  ⚠️  检查更新失败: {e}")
     
     # 心跳线程已关闭（用于测试）
     # _start_heartbeat_thread()
