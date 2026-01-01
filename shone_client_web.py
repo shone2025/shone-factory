@@ -873,7 +873,7 @@ class _0xTM:
                 # 上传到云端
                 import urllib.request
                 data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"email":em,"exp":ex,"user_id":sb}).encode('utf-8')
-                req=urllib.request.Request(f"{_CU}/api/update",data=data,headers={'Content-Type':'application/json','X-API-Key':_AS},method='POST')
+                req=urllib.request.Request(f"{_CLOUD_URL}/api/update",data=data,headers={'Content-Type':'application/json','X-API-Key':_CLIENT_KEY},method='POST')
                 with urllib.request.urlopen(req,timeout=15)as resp:
                     result=json.loads(resp.read().decode('utf-8'))
                     if result.get('success'):
@@ -960,40 +960,19 @@ class _0xTM:
         return'','',''
 
     def _0xwa(s,at,rt):
-        """写入 auth.json 到 Cursor 配置目录"""
+        """写入 auth.json 到配置目录"""
         _0xCHK()
-        # 直接写入 .cursor-tutor/auth.json (Cursor 的认证文件位置)
+        
+        # 写入 .factory/auth.json (droid 使用)
         try:
-            if platform.system()=='Windows':
-                # Windows: %APPDATA%\.cursor-tutor\auth.json
-                appdata=os.environ.get('APPDATA','')
-                if appdata:
-                    auth_dir=Path(appdata)/'.cursor-tutor'
-                else:
-                    auth_dir=Path.home()/'.cursor-tutor'
-            else:
-                # macOS/Linux: ~/.cursor-tutor/auth.json
-                auth_dir=Path.home()/'.cursor-tutor'
+            factory_dir=Path.home()/'.factory'
+            factory_dir.mkdir(parents=True,exist_ok=True)
+            factory_file=factory_dir/'auth.json'
             
-            auth_dir.mkdir(parents=True,exist_ok=True)
-            auth_file=auth_dir/'auth.json'
-            
-            # 备份旧文件
-            if auth_file.exists():
-                bk=auth_dir/'auth.json.bak'
-                if bk.exists():bk.unlink()
-                import shutil
-                shutil.copy(auth_file,bk)
-            
-            # 写入新的 auth.json (使用标准字段名)
-            auth_data={
-                'access_token':at,
-                'refresh_token':rt
-            }
-            with open(auth_file,'w',encoding='utf-8')as f:
+            auth_data={'access_token':at,'refresh_token':rt}
+            with open(factory_file,'w',encoding='utf-8')as f:
                 json.dump(auth_data,f,indent=2)
-            
-            print(f"[auth.json] 已写入: {auth_file}")
+            print(f"[auth.json] 已写入: {factory_file}")
             return True
         except Exception as e:
             print(f"[auth.json] 写入失败: {e}")
@@ -1035,6 +1014,8 @@ class _0xTM:
         po['accounts'].append(ac);s._0xsp(po)
         # 导入即切换：写入 auth.json
         s._0xwa(at,rt)
+        # v3.3.8新增: 添加后主动查询额度
+        s._0xfb(at,ki)
         return{"success":True,"message":f"已添加并切换到: {ki[:35]}..."}
 
     def _0xat_multi(s,lines):
@@ -1078,6 +1059,9 @@ class _0xTM:
         # 切换到最后一个导入的账号
         if last_at and last_rt:
             s._0xwa(last_at,last_rt)
+            # v3.3.8新增: 添加后主动查询额度
+            if last_ki:
+                s._0xfb(last_at,last_ki)
         # 构建消息
         msg=f"导入完成：成功 {len(added)} 个"
         if skipped:msg+=f"，跳过 {len(skipped)} 个(已存在)"
@@ -1248,26 +1232,57 @@ class _0xTM:
         }
 
     def _0xswa(s,ix):
+        """切换账号 - v3.3.8: 云端优先同步"""
         _0xCHK()
         po=s._0xlp();idx=ix-1
         if idx<0 or idx>=len(po['accounts']):return{"success":False,"message":"账号不存在"}
+        
+        # === v3.3.8新增: 切换前先上传当前账号到云端 ===
+        try:
+            # 读取当前 auth.json 找到旧账号
+            factory_auth = Path.home()/'.factory'/'auth.json'
+            if factory_auth.exists():
+                with open(factory_auth,'r',encoding='utf-8') as f:
+                    old_auth = json.load(f)
+                old_at = old_auth.get('access_token','')
+                old_rt = old_auth.get('refresh_token','')
+                if old_at and old_rt:
+                    # 在账号池中查找旧账号
+                    for old_acc in po['accounts']:
+                        if old_acc.get(_S2,'') == old_at:
+                            old_sfkl1 = old_acc.get('sf_key_line1','')
+                            if old_sfkl1:
+                                old_exp = old_acc.get('exp',0)
+                                sync_result = _0xUTC(old_sfkl1[:35],old_at,old_rt,old_exp)
+                                if sync_result and sync_result.get('success'):
+                                    print(f"[云端同步] 切换前同步旧账号成功: {old_acc.get('key_id','')}")
+                                else:
+                                    print(f"[云端同步] 切换前同步旧账号失败: {old_acc.get('key_id','')}")
+                            break
+        except Exception as e:
+            print(f"[云端同步] 切换前同步失败: {e}")
+        
+        # 获取目标账号信息
         a=po['accounts'][idx]
         at=a.get(_S2,'');rt=a.get(_S3,'');sfkl1=a.get('sf_key_line1','')
         
-        # 检查 token 是否过期，如果过期尝试从云端获取新 token
-        ex=a.get('exp',0);nw=datetime.now().timestamp()
-        if ex<=nw and sfkl1:
-            # Token 过期，尝试从云端获取最新 token
+        # === v3.3.8修改: 始终尝试从云端获取最新token ===
+        if sfkl1:
             cd=_0xCQ(sfkl1[:35])
             if cd and cd.get('access_token') and cd.get('refresh_token'):
-                at=cd.get('access_token','')
-                rt=cd.get('refresh_token','')
-                # 更新本地存储
-                po['accounts'][idx][_S2]=at
-                po['accounts'][idx][_S3]=rt
-                pl=s._0xdj(at)
-                if pl:po['accounts'][idx]['exp']=pl.get('exp',0)
-                s._0xsp(po)
+                cloud_at=cd.get('access_token','')
+                cloud_rt=cd.get('refresh_token','')
+                # 比较云端token是否更新
+                if cloud_at != at or cloud_rt != rt:
+                    at=cloud_at
+                    rt=cloud_rt
+                    # 更新本地存储
+                    po['accounts'][idx][_S2]=at
+                    po['accounts'][idx][_S3]=rt
+                    pl=s._0xdj(at)
+                    if pl:po['accounts'][idx]['exp']=pl.get('exp',0)
+                    s._0xsp(po)
+                    print(f"[云端同步] 已从云端获取最新token: {a.get('key_id','')}")
         
         if not at or not rt:return{"success":False,"message":"账号信息不完整"}
         if s._0xwa(at,rt):
@@ -1275,7 +1290,7 @@ class _0xTM:
             ki=a.get('key_id','')
             if at and ki:
                 s._0xfb(at,ki)
-            # 切换成功后，同步token到云端（重要：确保其他设备能获取最新token）
+            # 切换成功后，同步token到云端（确保其他设备能获取最新token）
             sync_warning=''
             if sfkl1:
                 ex=po['accounts'][idx].get('exp',0)
@@ -1956,47 +1971,58 @@ class _0xTM:
             return True
         
         def run_login_flow_mac():
-            """Mac后台执行登录流程"""
+            """Mac后台执行登录流程 - v3.3.8: 对齐管理端实现"""
             try:
                 clear_auth_json()
-                # 完整流程：启动droid -> 输入/login -> 回车 -> 等待列表 -> 回车确认
-                script='''
-                tell application "Terminal"
+                
+                # 步骤0: 强制退出Terminal (规避CLI保护机制)
+                quit_script = 'tell application "Terminal" to quit'
+                try:
+                    subprocess.run(['osascript','-e',quit_script],capture_output=True,timeout=5)
+                    time.sleep(2)
+                except:
+                    pass
+                
+                # 步骤1: 启动droid (单独调用)
+                start_script = '''tell application "Terminal"
                     activate
                     do script "droid"
-                end tell
-                delay 6
+                end tell'''
+                subprocess.run(['osascript','-e',start_script],capture_output=True,timeout=5)
+                time.sleep(5)  # 等待droid启动
+                
+                # 步骤2: /login + 3次回车 (单独调用)
+                login_script = '''tell application "Terminal" to activate
                 tell application "System Events"
-                    tell process "Terminal"
-                        keystroke "/login"
-                        delay 0.5
-                        keystroke return
-                        delay 2
-                        keystroke return
-                    end tell
-                end tell
-                '''
-                result=subprocess.run(['osascript','-e',script],capture_output=True,text=True,timeout=30)
-                if result.returncode!=0:
-                    print(f"AppleScript执行失败: {result.stderr}")
+                    keystroke "/login"
+                    delay 0.5
+                    keystroke return
+                    delay 1.0
+                    keystroke return
+                    delay 1.0
+                    keystroke return
+                end tell'''
+                subprocess.run(['osascript','-e',login_script],capture_output=True,text=True,timeout=15)
             except Exception as e:
                 print(f"登录流程执行失败: {e}")
         
         def run_login_flow_windows():
-            """Windows后台执行登录流程"""
+            """Windows后台执行登录流程 - v3.3.8: 增加第3次回车"""
             try:
                 clear_auth_json()
-                # 完整流程：启动droid -> 输入/login -> 回车 -> 等待列表 -> 回车确认
+                # 完整流程：启动droid -> 输入/login -> 回车 -> 选择 -> 回车确认
                 ps_script='''
                 Start-Process cmd -ArgumentList '/k "droid"' -PassThru
-                Start-Sleep -Seconds 6
+                Start-Sleep -Seconds 5
                 $wshell = New-Object -ComObject WScript.Shell
                 $wshell.AppActivate('droid')
                 Start-Sleep -Seconds 1
                 $wshell.SendKeys('/login')
                 Start-Sleep -Milliseconds 500
                 $wshell.SendKeys('{ENTER}')
-                Start-Sleep -Seconds 2
+                Start-Sleep -Seconds 1
+                $wshell.SendKeys('{ENTER}')
+                Start-Sleep -Seconds 1
                 $wshell.SendKeys('{ENTER}')
                 '''
                 subprocess.run(['powershell','-Command',ps_script],capture_output=True,text=True,timeout=30)
@@ -2730,7 +2756,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.5</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.8</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
@@ -3660,7 +3686,7 @@ _H1='''<!DOCTYPE html>
                 const refreshRequestBtn = acc.status === 'refresh' ? `<button class="btn btn-secondary action-btn" onclick="requestRefresh('${acc.key_id}')" title="向管理员申请刷新此Key">✉ ${t('request')}</button>` : '';
                 const actionBtn = acc.is_current 
                     ? `<span class="btn btn-secondary action-btn" style="cursor:default;border-color:var(--accent-green);color:var(--accent-green);">● ${t('active')}</span>` 
-                    : `<button class="btn btn-secondary action-btn" onclick="switchAccount(${acc.index})">◇ ${t('switch')}</button>`;
+                    : `<button class="btn btn-secondary action-btn" onclick="switchAccount(this, ${acc.index})">◇ ${t('switch')}</button>`;
                 // Key编号单元格只显示Key，按钮移到操作列
                 const extraActions = refreshRequestBtn;
                 html += `<tr><td style="text-align:center;">${acc.index}</td><td>${keyDisplay}</td><td class="${statusClass}"${statusTip}>${acc.is_current ? t('active') : acc.status_text}</td><td class="${balanceClass}"${balanceTip}>${acc.balance_text}</td><td>${acc.remaining}</td><td>${acc.usage_ratio}</td><td>${acc.remark || '-'}</td><td>${acc.added_at}</td><td style="white-space:nowrap;">${extraActions}${actionBtn}<button class="btn btn-secondary action-btn" onclick="editRemark(${acc.index}, '${(acc.remark || '').replace(/'/g, "\\\\'")}')">✎ ${t('edit')}</button><button class="btn btn-secondary action-btn" onclick="deleteAccount(${acc.index})">✕ ${t('del')}</button></td></tr>`;
@@ -3726,10 +3752,19 @@ _H1='''<!DOCTYPE html>
                 } else { container.innerHTML = '<span style="color: var(--text-muted);">No active session. Run droid auth login first.</span>'; }
             } catch (e) { container.innerHTML = '<span style="color: var(--accent-red);">Detection failed</span>'; }
         }
-        async function switchAccount(index) {
+        async function switchAccount(btn, index) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '● 登录中...';
+            btn.style.color = 'var(--accent-green)';
+            btn.style.borderColor = 'var(--accent-green)';
+            btn.disabled = true;
             showLoading(t('switchingAccount'), 35000);
             const result = await api('switch', { index });
             hideLoading();
+            btn.innerHTML = originalText;
+            btn.style.color = '';
+            btn.style.borderColor = '';
+            btn.disabled = false;
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { loadAccounts(); loadLoginStatus(); }
         }
