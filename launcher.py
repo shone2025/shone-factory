@@ -17,8 +17,8 @@ from pathlib import Path
 
 # 云端配置
 _CLOUD_URL = "https://shone.ggff.net"
-_CLIENT_KEY = "shone-factory-client-2024"
-_LOCAL_VERSION = "3.4.0"  # 当前本地版本
+_CLIENT_KEY = "shonefactory_client_2024"  # 与云端 SECURITY_CONFIG.CLIENT_SECRET 一致
+_LOCAL_VERSION = "3.4.1"  # 当前本地版本
 
 def get_os_type():
     """获取操作系统类型"""
@@ -116,6 +116,7 @@ def compare_versions(local, remote):
 def download_update():
     """从云端下载最新客户端代码"""
     try:
+        import time
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -123,12 +124,14 @@ def download_update():
         no_proxy_handler = urllib.request.ProxyHandler({})
         opener = urllib.request.build_opener(no_proxy_handler, urllib.request.HTTPSHandler(context=ctx))
         
+        ts = str(int(time.time()))
         req = urllib.request.Request(
             f"{_CLOUD_URL}/api/download-client",
             headers={
                 'User-Agent': 'ShoneFactory-Client/1.0',
                 'Accept': 'application/json',
-                'X-Client-Key': _CLIENT_KEY
+                'X-Client-Key': _CLIENT_KEY,
+                'X-Timestamp': ts
             },
             method='GET'
         )
