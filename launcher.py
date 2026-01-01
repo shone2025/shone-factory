@@ -16,9 +16,9 @@ import shutil
 from pathlib import Path
 
 # 云端配置
-_CLOUD_URL = "https://sfk.shonekey.top"
+_CLOUD_URL = "https://shone.ggff.net"
 _CLIENT_KEY = "shone-factory-client-2024"
-_LOCAL_VERSION = "3.3.9"  # 当前本地版本
+_LOCAL_VERSION = "3.4.0"  # 当前本地版本
 
 def get_os_type():
     """获取操作系统类型"""
