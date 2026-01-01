@@ -182,6 +182,42 @@ def _report_sfkey_import(referrer_id=None):
     except:
         return None
 
+def _is_port_in_use(port):
+    """检测端口是否已被占用（用于防止重复启动服务）"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            result = s.connect_ex(('127.0.0.1', port))
+            return result == 0  # 0 表示端口已被占用
+    except:
+        return False
+
+def _open_browser_if_not_focused(url):
+    """智能打开浏览器：Mac上尝试聚焦已有窗口而不是打开新标签"""
+    if platform.system() == 'Darwin':
+        # Mac: 使用 AppleScript 尝试聚焦已有的浏览器窗口
+        try:
+            script = f'''
+            tell application "System Events"
+                set browserList to {{"Safari", "Google Chrome", "Firefox"}}
+                repeat with browserName in browserList
+                    if application browserName is running then
+                        tell application browserName
+                            activate
+                            -- 尝试聚焦包含目标URL的标签页
+                        end tell
+                        return
+                    end if
+                end repeat
+            end tell
+            '''
+            # 先尝试聚焦，如果失败则正常打开
+            subprocess.run(['osascript', '-e', script], capture_output=True, timeout=2)
+        except:
+            pass
+    # 正常打开浏览器
+    webbrowser.open(url)
+
 def _0xGCF():
     """从云端获取客户端配置（绕过系统代理）"""
     try:
@@ -220,87 +256,6 @@ def _0xGVR():
         return {"success":False,"message":f"网络错误: {e.reason}"}
     except Exception as e:
         return {"success":False,"message":f"检查失败: {e}"}
-
-def _0xAU():
-    """从云端下载并更新客户端主文件"""
-    try:
-        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
-        no_proxy_handler=urllib.request.ProxyHandler({})
-        opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
-        rq=urllib.request.Request(f"{_CLOUD_URL}/api/download-client",headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
-            'Accept':'application/json',
-            'X-Client-Key':_CLIENT_KEY,
-            'X-Timestamp':str(int(time.time()))
-        },method='GET')
-        with opener.open(rq,timeout=30)as rs:
-            r=json.loads(rs.read().decode('utf-8'))
-            if r.get('success') and r.get('code'):
-                # 获取当前脚本路径
-                current_file=Path(__file__).resolve()
-                backup_file=current_file.with_suffix('.py.bak')
-                
-                # 备份当前文件
-                if current_file.exists():
-                    import shutil
-                    if backup_file.exists():
-                        backup_file.unlink()
-                    shutil.copy(current_file, backup_file)
-                
-                # 写入新文件
-                with open(current_file,'w',encoding='utf-8')as f:
-                    f.write(r.get('code'))
-                
-                return {
-                    "success":True,
-                    "message":f"更新成功! 新版本: {r.get('version','unknown')}",
-                    "version":r.get('version'),
-                    "need_restart":True
-                }
-            else:
-                return {"success":False,"message":r.get('message','下载失败')}
-    except urllib.error.URLError as e:
-        return {"success":False,"message":f"网络错误: {e.reason}"}
-    except Exception as e:
-        return {"success":False,"message":f"更新失败: {e}"}
-
-def _0xCAU():
-    """检查并自动更新（启动时调用）"""
-    try:
-        # 获取云端版本
-        vr=_0xGVR()
-        if not vr.get('success'):
-            return {"checked":True,"updated":False,"message":"无法检查更新"}
-        
-        cloud_version=vr.get('version',{}).get('current','0.0.0')
-        
-        # 获取本地版本（从文件中提取）
-        local_version='0.0.0'
-        try:
-            with open(Path(__file__),'r',encoding='utf-8')as f:
-                content=f.read()
-                import re
-                m=re.search(r'V(\d+\.\d+\.\d+)',content)
-                if m:local_version=m.group(1)
-        except:pass
-        
-        # 版本比较
-        def version_tuple(v):
-            return tuple(map(int,v.split('.')))
-        
-        if version_tuple(cloud_version)>version_tuple(local_version):
-            print(f"[自动更新] 发现新版本: {local_version} -> {cloud_version}")
-            result=_0xAU()
-            if result.get('success'):
-                print(f"[自动更新] 更新成功，请重启程序")
-                return {"checked":True,"updated":True,"message":f"已更新到 {cloud_version}，请重启程序"}
-            else:
-                print(f"[自动更新] 更新失败: {result.get('message')}")
-                return {"checked":True,"updated":False,"message":result.get('message')}
-        else:
-            return {"checked":True,"updated":False,"message":"已是最新版本"}
-    except Exception as e:
-        return {"checked":True,"updated":False,"message":f"检查更新出错: {e}"}
 
 def _0xRRF(sfkey_id):
     """向云端提交刷新请求"""
@@ -399,7 +354,29 @@ def _0xCQU(user_id):
     return None
 
 def _0xCQC(sfkey_id):
-    """从云端查询账号凭据(邮箱/密码/Cookie)"""
+    """从云端查询账号凭据(邮箱/密码/Cookie) - v3.3.6: 优先查询D1数据库"""
+    # 优先从D1数据库查询 (管理端同步的数据存储在D1)
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
+        ts=str(int(time.time()))
+        rq=urllib.request.Request(url,headers={
+            'User-Agent':'ShoneFactory-Client/1.0',
+            'Accept':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':ts
+        },method='GET')
+        with urllib.request.urlopen(rq,timeout=15,context=ctx)as rs:
+            r=json.loads(rs.read().decode('utf-8'))
+            if r.get('success') and r.get('found') and r.get('account'):
+                acc=r.get('account',{})
+                if acc.get('email') or acc.get('password'):
+                    print(f"[凭据查询] D1数据库命中: {sfkey_id[:15]}...")
+                    return {'email':acc.get('email',''),'password':acc.get('password',''),'region':acc.get('region',''),'s5_proxy':acc.get('s5_proxy','')}
+    except Exception as e:
+        print(f"[凭据查询] D1查询异常: {e}")
+    
+    # Fallback: 从KV凭据存储查询
     try:
         ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
@@ -418,9 +395,10 @@ def _0xCQC(sfkey_id):
                     b64=enc.replace('_','=').replace('-','+').replace('.','/')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
+                    print(f"[凭据查询] KV存储命中: {sfkey_id[:15]}...")
                     return json.loads(js)
     except Exception as e:
-        print(f"云端凭据查询异常: {e}")
+        print(f"[凭据查询] KV查询异常: {e}")
     return None
 
 def _0xUTC(sfkey_id,at,rt,ex,retry=2):
@@ -773,11 +751,11 @@ _0xCHK()
 _0k=lambda s,k=0x5F:''.join(chr(ord(c)^k)for c in s)
 _0e=lambda s:base64.b64encode(s.encode()).decode()
 _0d=lambda s:base64.b64decode(s).decode()
-_S1=_0k('\x3e\x2a\x2b\x37\x71\x35\x2c\x30\x31')
+_S1=_0k('\x3e\x2e\x35\x3b\x71\x3f\x28\x38\x39')
 _S2=_0k('\x3e\x30\x30\x3a\x28\x28\x70\x35\x38\x3c\x3a\x39')
 _S3=_0k('\x27\x3a\x3b\x27\x3a\x28\x3b\x70\x35\x38\x3c\x3a\x39')
-_S4=_0k('\x71\x39\x3e\x3c\x2b\x30\x2d\x26')
-_S5=_0k('\x0a\x0c\x1a\x0d\x0f\x0d\x10\x19\x16\x13\x1a')
+_S4=_0k('\x71\x3b\x3e\x30\x35\x38\x27\x2c')
+_S5=_0k('\x14\x28\x3a\x27\x11\x27\x38\x3b\x3c\x3f\x3a')
 _S6=_0d('aHR0cHM6Ly9hcHAuZmFjdG9yeS5haS9hcGkvb3JnYW5pemF0aW9uL21lbWJlcnMvY2hhdC11c2FnZQ==')
 _S7=_0d('aHR0cHM6Ly9hcGkuZmFjdG9yeS5haS9jbGkvYXV0aC9yZWZyZXNo')
 _S8=_0d('aHR0cHM6Ly9hcGkuZmFjdG9yeS5haS9hdXRoL3JlZnJlc2g=')
@@ -806,7 +784,7 @@ class _0xTM:
 
     def _0xfp(s):
         _0xCHK()
-        if platform.system()=='Windows':return Path(os.environ.get(_S5,''))/_S4
+        if platform.system()=='Windows':return Path(os.environ.get(_S5,''))/_S4[1:]
         return Path.home()/_S4
 
     def _0xdj(s,t):
@@ -982,18 +960,27 @@ class _0xTM:
         return'','',''
 
     def _0xwa(s,at,rt):
-        """写入 auth.json 到配置目录"""
+        """写入 auth.json 到 Cursor 配置目录"""
         _0xCHK()
-        # 使用 _0xfp() 获取正确的配置目录（与读取路径一致）
+        # 直接写入 .cursor-tutor/auth.json (Cursor 的认证文件位置)
         try:
-            auth_dir=s._0xfp()
+            if platform.system()=='Windows':
+                # Windows: %APPDATA%\.cursor-tutor\auth.json
+                appdata=os.environ.get('APPDATA','')
+                if appdata:
+                    auth_dir=Path(appdata)/'.cursor-tutor'
+                else:
+                    auth_dir=Path.home()/'.cursor-tutor'
+            else:
+                # macOS/Linux: ~/.cursor-tutor/auth.json
+                auth_dir=Path.home()/'.cursor-tutor'
             
             auth_dir.mkdir(parents=True,exist_ok=True)
-            auth_file=auth_dir/_S1
+            auth_file=auth_dir/'auth.json'
             
             # 备份旧文件
             if auth_file.exists():
-                bk=auth_dir/(_S1+'.bak')
+                bk=auth_dir/'auth.json.bak'
                 if bk.exists():bk.unlink()
                 import shutil
                 shutil.copy(auth_file,bk)
@@ -1267,9 +1254,10 @@ class _0xTM:
         a=po['accounts'][idx]
         at=a.get(_S2,'');rt=a.get(_S3,'');sfkl1=a.get('sf_key_line1','')
         
-        # v3.2.6修复: 始终尝试从云端获取最新 token（而非仅在过期时）
-        # 这与管理端的"云端下载"功能保持一致
-        if sfkl1:
+        # 检查 token 是否过期，如果过期尝试从云端获取新 token
+        ex=a.get('exp',0);nw=datetime.now().timestamp()
+        if ex<=nw and sfkl1:
+            # Token 过期，尝试从云端获取最新 token
             cd=_0xCQ(sfkl1[:35])
             if cd and cd.get('access_token') and cd.get('refresh_token'):
                 at=cd.get('access_token','')
@@ -1280,9 +1268,6 @@ class _0xTM:
                 pl=s._0xdj(at)
                 if pl:po['accounts'][idx]['exp']=pl.get('exp',0)
                 s._0xsp(po)
-                print(f"[云端下载] 成功获取最新Token: {a.get('key_id','')[:20]}...")
-            else:
-                print(f"[云端下载] 云端无数据，使用本地Token")
         
         if not at or not rt:return{"success":False,"message":"账号信息不完整"}
         if s._0xwa(at,rt):
@@ -1401,7 +1386,7 @@ class _0xTM:
         """全部续期 - 通过云端 API 刷新账号的 Token
         force_all: True=强制刷新所有账号, False=仅刷新即将过期或已过期的账号
         
-        v3.3.1: 敏感信息(FACTORY_CLIENT_ID)现在仅存储在云端
+        v3.3.5: 敏感信息(FACTORY_CLIENT_ID)仅存储在云端
         - 客户端发送 refresh_token 到云端
         - 云端调用 WorkOS API 刷新并返回新 token
         - 正在使用的账号：不主动刷新，仅检测token变化并同步到云端
@@ -1488,11 +1473,11 @@ class _0xTM:
                 results.append({"key":ki,"status":"skip","msg":f"云端刷新中({remaining_minutes:.0f}m)"})
                 continue
             
-            # 记录即将刷新的日志（仅强制模式或已过期时本地刷新）
+            # 记录即将刷新的日志
             if is_expired:
                 print(f"[云端续期] {ki} 已过期，请求云端刷新")
             
-            # v3.3.1: 调用云端 API 刷新 (敏感信息不暴露在客户端)
+            # v3.3.5: 调用云端 API 刷新 (敏感信息不暴露在客户端)
             try:
                 ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
                 sfkey_id=sfkl1[:35] if sfkl1 and len(sfkl1)>=35 else ''
@@ -1549,7 +1534,12 @@ class _0xTM:
                 try:
                     error_json=json.loads(error_body)
                     error_desc=error_json.get('error_description',error_json.get('error',''))
-                    results.append({"key":ki,"status":"fail","msg":error_desc[:30] if error_desc else f"HTTP{e.code}"})
+                    if 'already exchanged' in error_desc.lower():
+                        results.append({"key":ki,"status":"fail","msg":"token已使用,需重新登录"})
+                    elif 'expired' in error_desc.lower():
+                        results.append({"key":ki,"status":"fail","msg":"refresh_token已过期"})
+                    else:
+                        results.append({"key":ki,"status":"fail","msg":error_desc[:30]})
                 except:
                     results.append({"key":ki,"status":"fail","msg":f"HTTP{e.code}"})
                 fail_count+=1
@@ -1849,13 +1839,28 @@ class _0xTM:
     def _0xgbi(s,ki):return s._0bc.get(ki,{})
 
     def _0xSRCC(s):
-        """清空Chrome的Google账户信息"""
+        """清空Chrome的Google账户信息 - v3.3.5改进：优雅退出Chrome"""
         import subprocess,shutil
         system=platform.system()
         try:
             if system=='Darwin':
-                subprocess.run(['pkill','-f','Google Chrome'],capture_output=True)
-                time.sleep(1)
+                # v3.3.5: 使用AppleScript优雅请求Chrome退出，而非直接kill
+                # 这样用户可以保存工作，且知道Chrome正在关闭
+                ps_result = subprocess.run(['pgrep', '-x', 'Google Chrome'], capture_output=True)
+                chrome_running = ps_result.returncode == 0
+                
+                if chrome_running:
+                    # 使用AppleScript让Chrome优雅退出
+                    quit_script = '''
+                    tell application "Google Chrome"
+                        if it is running then
+                            quit
+                        end if
+                    end tell
+                    '''
+                    subprocess.run(['osascript', '-e', quit_script], capture_output=True, timeout=10)
+                    time.sleep(2)  # 等待Chrome完全退出
+                
                 chrome_dir=Path.home()/'Library'/'Application Support'/'Google'/'Chrome'
                 if chrome_dir.exists():
                     for item in ['Default','Profile 1','Profile 2','Profile 3']:
@@ -1866,11 +1871,15 @@ class _0xTM:
                                 if sp.exists():
                                     if sp.is_dir():shutil.rmtree(sp,ignore_errors=True)
                                     else:sp.unlink(missing_ok=True)
-                    return{"success":True,"message":"Chrome Google信息已清空"}
+                    msg = "Chrome Google信息已清空"
+                    if chrome_running:
+                        msg += "，请重新打开Chrome"
+                    return{"success":True,"message":msg}
                 return{"success":False,"message":"未找到Chrome目录"}
             elif system=='Windows':
-                subprocess.run(['taskkill','/F','/IM','chrome.exe'],capture_output=True)
-                time.sleep(1)
+                # Windows也改用优雅关闭
+                subprocess.run(['taskkill','/IM','chrome.exe'],capture_output=True)  # 不加/F，允许Chrome保存
+                time.sleep(2)
                 chrome_dir=Path(os.environ.get('LOCALAPPDATA',''))/'Google'/'Chrome'/'User Data'
                 if chrome_dir.exists():
                     for item in ['Default','Profile 1','Profile 2']:
@@ -1879,7 +1888,7 @@ class _0xTM:
                             for sub in ['Cookies','Login Data','Web Data']:
                                 sp=p/sub
                                 if sp.exists():sp.unlink(missing_ok=True)
-                    return{"success":True,"message":"Chrome Google信息已清空"}
+                    return{"success":True,"message":"Chrome Google信息已清空，请重新打开Chrome"}
                 return{"success":False,"message":"未找到Chrome目录"}
             return{"success":False,"message":f"不支持的系统: {system}"}
         except Exception as e:
@@ -1938,7 +1947,7 @@ class _0xTM:
         
         def clear_auth_json():
             """清理auth.json"""
-            auth_file=s._0xfp()/'auth.json'
+            auth_file=Path.home()/'.factory'/'auth.json'
             if auth_file.exists():
                 try:
                     auth_file.unlink()
@@ -2186,24 +2195,30 @@ networksetup -setsocksfirewallproxystate '{active_service}' off
             return{"success":False,"message":f"恢复失败: {e}"}
 
     def _0xSRGC(s,key_id):
-        """获取账号凭据 - 从云端获取邮箱和密码"""
+        """获取账号凭据 - 从云端获取邮箱和密码 (v3.3.5: 增加本地备用)"""
         if not key_id:return{"success":False,"message":"未指定账号"}
         po=s._0xlp()
         sfkl1=None
+        local_email=None  # v3.3.5: 本地备用邮箱
         for a in po['accounts']:
             if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
                 sfkl1=a.get('sf_key_line1','')
+                local_email=a.get('email','')  # 从本地获取邮箱作为备用
                 break
         if not sfkl1:return{"success":False,"message":"未找到账号"}
         # 从云端获取凭据
         cd=_0xCQC(sfkl1[:35])
-        if not cd:return{"success":False,"message":"云端无凭据数据"}
+        if not cd:
+            # v3.3.5: 云端无凭据时，尝试返回本地邮箱
+            if local_email:
+                return{"success":True,"email":local_email,"password":"","message":"密码需联系管理员获取"}
+            return{"success":False,"message":"云端无凭据数据，请联系管理员同步"}
         return{"success":True,"email":cd.get('email',''),"password":cd.get('password','')}
 
     def _0xSRUA(s,key_id):
         """更新账号 - 检查auth.json并上传到云端"""
         if not key_id:return{"success":False,"message":"未指定账号"}
-        auth_file=s._0xfp()/'auth.json'
+        auth_file=Path.home()/'.factory'/'auth.json'
         if not auth_file.exists():
             return{"success":False,"message":"auth.json不存在，请先完成登录"}
         try:
@@ -2715,7 +2730,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.1</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.3.5</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
@@ -2873,38 +2888,52 @@ _H1='''<!DOCTYPE html>
                 <div style="color: var(--accent-green); font-weight: 500; margin-bottom: 8px;">🌐 SOCKS5代理:</div>
                 <div id="s5ProxyInfo" style="color: var(--text-secondary); line-height: 1.6; font-family: monospace;"></div>
             </div>
-            <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 16px; margin-bottom: 20px; font-size: 10px; color: var(--text-secondary); max-height: 180px; overflow-y: auto;">
+            <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 16px; margin-bottom: 20px; font-size: 10px; color: var(--text-secondary); max-height: 220px; overflow-y: auto;">
                 <div id="stepsLabel" style="color: var(--accent-yellow); font-weight: 500; margin-bottom: 12px; letter-spacing: 1px;">步骤:</div>
                 <div id="step1" style="margin-bottom: 6px;">1. 设置Chrome为默认浏览器</div>
-                <div style="margin-bottom: 6px;"><span id="step2">2. 切换VPN到</span> <span style="color: var(--accent-green);" id="refreshRegionHint">对应地区</span></div>
-                <div id="step3" style="margin-bottom: 6px;">3. 点击下方Cookie注入</div>
-                <div id="step4" style="margin-bottom: 6px;">4. 点击打开登录页并选择系统</div>
-                <div id="step5" style="margin-bottom: 6px;">5. 如果未自动登录，手动复制账号密码</div>
-                <div id="step6" style="margin-bottom: 6px;">6. 登录后点击浏览器中的连接设备</div>
-                <div id="step7" style="margin-bottom: 10px;">7. 最后点击更新账号</div>
+                <div id="step2" style="margin-bottom: 6px;">2. 清空Chrome</div>
+                <div id="step3" style="margin-bottom: 6px;">3. 点击打开登录页 将跳转至终端并自动输入登录指令</div>
+                <div id="step4" style="margin-bottom: 6px;">4. 如果没有正确输入，请在终端中输入 droid 加载完成后 输入 /login<br>&nbsp;&nbsp;&nbsp;如果账号已经是登录状态，选择重新登录re开头选项</div>
+                <div id="step5" style="margin-bottom: 6px;">5. 点击复制账号按钮</div>
+                <div id="step6" style="margin-bottom: 6px;">6. 在弹出的网页中选择Google登录 并输入账号密码</div>
+                <div id="step7" style="margin-bottom: 6px;">7. 登录成功后，点击浏览器的连接设备</div>
+                <div id="step8" style="margin-bottom: 6px;">8. 点击更新账号按钮</div>
+                <div id="step9" style="margin-bottom: 10px;">9. 如果你不会以上操作，或者操作过程中遇到问题，请点击申请刷新按钮<br>&nbsp;&nbsp;&nbsp;系统在收到指令后，管理员将会手动原始数据刷新，此过程需要8小时以内完成</div>
                 <div id="selfRefreshNote" style="color: var(--text-muted); font-size: 9px; border-top: 1px solid var(--border-color); padding-top: 10px;">
                     备注：不自主刷新账号功能仍可使用，但无法查询余额。
                 </div>
             </div>
+            <!-- 主要操作按钮 -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                <button id="btnS5Inject" class="btn btn-secondary" onclick="selfRefreshS5Inject()" style="background: var(--accent-green); color: #000;">🌐 代理注入</button>
-                <button id="btnRestoreNetwork" class="btn btn-secondary" onclick="restoreNetwork()" style="background: var(--accent-red); color: #fff;">✕ 恢复网络</button>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                <button id="btnCookieInject" class="btn btn-secondary" onclick="selfRefreshCookieInject()">◈ Cookie注入</button>
+                <button id="btnClearChrome" class="btn btn-secondary" onclick="selfRefreshClearChrome()">⊗ 清空Chrome</button>
                 <button id="btnOpenLogin" class="btn btn-secondary" onclick="showSystemSelect()">⇗ 打开登录页</button>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                 <button id="btnCopyEmail" class="btn btn-secondary" onclick="selfRefreshCopyEmail()">⊕ 复制账号</button>
                 <button id="btnCopyPassword" class="btn btn-secondary" onclick="selfRefreshCopyPassword()">⊕ 复制密码</button>
-                <button id="btnClearChrome" class="btn btn-secondary" onclick="selfRefreshClearChrome()">⊗ 清空Chrome</button>
             </div>
             <div style="margin-bottom: 16px;">
                 <button id="btnUpdateAccount" class="btn btn-secondary" style="width: 100%; padding: 14px;" onclick="selfRefreshUpdateAccount()">↻ 更新账号</button>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 16px;">
                 <button id="btnRequestRefresh" class="btn btn-secondary" style="flex: 1;" onclick="selfRefreshSubmitRequest()">✉ 申请刷新</button>
                 <button id="btnCloseSelfRefresh" class="btn btn-secondary" style="flex: 1;" onclick="closeSelfRefreshModal()">✕ 关闭</button>
+            </div>
+            <!-- 高级选项折叠区域 -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <div id="advancedToggle" onclick="toggleAdvancedOptions()" style="cursor: pointer; color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+                    <span id="advancedArrow" style="transition: transform 0.2s;">▶</span>
+                    <span>高级选项</span>
+                </div>
+                <div id="advancedOptions" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <button id="btnS5Inject" class="btn btn-secondary" onclick="selfRefreshS5Inject()" style="background: var(--accent-green); color: #000;">🌐 代理注入</button>
+                        <button id="btnRestoreNetwork" class="btn btn-secondary" onclick="restoreNetwork()" style="background: var(--accent-red); color: #fff;">✕ 恢复网络</button>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <button id="btnCookieInject" class="btn btn-secondary" style="width: 100%;" onclick="selfRefreshCookieInject()">◈ Cookie注入</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -3806,9 +3835,51 @@ _H1='''<!DOCTYPE html>
             document.getElementById('selfRefreshModal').classList.remove('active');
             currentRefreshKeyId = '';
             currentRefreshRegion = '';
+            // 重置高级选项为收起状态
+            document.getElementById('advancedOptions').style.display = 'none';
+            document.getElementById('advancedArrow').style.transform = 'rotate(0deg)';
+        }
+        function toggleAdvancedOptions() {
+            const options = document.getElementById('advancedOptions');
+            const arrow = document.getElementById('advancedArrow');
+            if (options.style.display === 'none') {
+                options.style.display = 'block';
+                arrow.style.transform = 'rotate(90deg)';
+            } else {
+                options.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+        async function copyToClipboard(text) {
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                }
+            } catch (e) { console.log('Clipboard API failed:', e); }
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return ok;
         }
         async function selfRefreshClearChrome() {
-            showToast('Clearing Chrome Google data...', 'info');
+            // 检测用户是否使用Chrome浏览器
+            const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+            if (isChrome) {
+                // 用户使用Chrome，警告页面将关闭
+                const confirmMsg = currentLang === 'zh' 
+                    ? '检测到您正在使用Chrome浏览器。\\n\\n清空Chrome数据需要关闭Chrome，这将导致当前页面关闭。\\n\\n请先保存工作，点击确定后Chrome将关闭。\\n清空完成后请重新打开Chrome访问本页面。'
+                    : 'You are using Chrome browser.\\n\\nClearing Chrome data requires closing Chrome, which will close this page.\\n\\nPlease save your work. Click OK to proceed.\\nAfter clearing, please reopen Chrome to access this page.';
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+            }
+            showToast(currentLang === 'zh' ? '正在清空Chrome Google数据...' : 'Clearing Chrome Google data...', 'info');
             const result = await api('self_refresh_clear_chrome');
             showToast(result.message, result.success ? 'success' : 'error');
         }
@@ -3840,8 +3911,12 @@ _H1='''<!DOCTYPE html>
             if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
             const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
             if (result.success && result.email) {
-                navigator.clipboard.writeText(result.email);
-                showToast('Email copied to clipboard', 'success');
+                const copied = await copyToClipboard(result.email);
+                if (copied) {
+                    showToast('账号已复制到剪贴板', 'success');
+                } else {
+                    showToast('复制失败，请手动复制: ' + result.email, 'error');
+                }
             } else {
                 showToast(result.message || 'Failed to get email', 'error');
             }
@@ -3850,8 +3925,12 @@ _H1='''<!DOCTYPE html>
             if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
             const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
             if (result.success && result.password) {
-                navigator.clipboard.writeText(result.password);
-                showToast('Password copied to clipboard', 'success');
+                const copied = await copyToClipboard(result.password);
+                if (copied) {
+                    showToast('密码已复制到剪贴板', 'success');
+                } else {
+                    showToast('复制失败，请手动复制: ' + result.password, 'error');
+                }
             } else {
                 showToast(result.message || 'Failed to get password', 'error');
             }
@@ -3970,45 +4049,20 @@ _H1='''<!DOCTYPE html>
         }
         
         async function checkVersion() {
-            showToast(currentLang === 'zh' ? '正在检查更新...' : 'Checking for updates...', 'info');
+            showToast(t('checkingUpdate'), 'info');
             try {
                 const result = await api('check_version');
                 if (result.success && result.version) {
                     const v = result.version;
-                    const currentVersion = document.querySelector('h1 span')?.textContent?.replace('V', '') || '0.0.0';
-                    const cloudVersion = v.current || '0.0.0';
-                    
-                    // 比较版本
-                    const current = currentVersion.split('.').map(Number);
-                    const cloud = cloudVersion.split('.').map(Number);
-                    const needUpdate = cloud[0] > current[0] || 
-                        (cloud[0] === current[0] && cloud[1] > current[1]) ||
-                        (cloud[0] === current[0] && cloud[1] === current[1] && cloud[2] > current[2]);
-                    
-                    if (needUpdate) {
-                        const msg = currentLang === 'zh' 
-                            ? `发现新版本: ${currentVersion} → ${cloudVersion}\n\n点击确定自动下载并更新（更新后需重启程序）`
-                            : `New version available: ${currentVersion} → ${cloudVersion}\n\nClick OK to download and update (restart required)`;
-                        
-                        if (confirm(msg)) {
-                            showToast(currentLang === 'zh' ? '正在下载更新...' : 'Downloading update...', 'info');
-                            const updateResult = await api('auto_update');
-                            if (updateResult.success) {
-                                alert(currentLang === 'zh' 
-                                    ? `更新成功！\n新版本: ${updateResult.version}\n\n请关闭并重新启动程序以使用新版本。`
-                                    : `Update successful!\nNew version: ${updateResult.version}\n\nPlease close and restart the program.`);
-                            } else {
-                                showToast(updateResult.message || (currentLang === 'zh' ? '更新失败' : 'Update failed'), 'error');
-                            }
-                        }
-                    } else {
-                        showToast(currentLang === 'zh' ? '已是最新版本 ✓' : 'Already up to date ✓', 'success');
+                    const msg = `${currentLang === 'zh' ? '当前版本' : 'Current version'}: ${v.current || '1.0.0'}\\n\\n${currentLang === 'zh' ? '更新日志' : 'Changelog'}:\\n${v.changelog || (currentLang === 'zh' ? '无' : 'None')}`;
+                    if (confirm(msg + `\\n\\n${currentLang === 'zh' ? '点击确定下载最新版本' : 'Click OK to download latest version'}`)) {
+                        window.open(v.download_url || 'https://github.com/shone2025/shone-factory/releases/latest', '_blank');
                     }
                 } else {
-                    showToast(result.message || (currentLang === 'zh' ? '检查更新失败' : 'Check update failed'), 'error');
+                    showToast(result.message || t('checkFailed'), 'error');
                 }
             } catch (e) {
-                showToast((currentLang === 'zh' ? '检查更新失败' : 'Check update failed') + ': ' + e, 'error');
+                showToast(t('checkFailed') + ': ' + e, 'error');
             }
         }
         
@@ -4329,7 +4383,6 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='get_device_id':r={"success":True,"device_id":_generate_device_id()}
                 elif ac=='submit_ticket':r=_0xSTK(d)
                 elif ac=='get_my_tickets':r=_0xGMT()
-                elif ac=='auto_update':r=_0xAU()  # 自动更新
                 else:r={"success":False,"message":"未知操作"}
                 s._0xsj(r)
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
@@ -4365,6 +4418,20 @@ def _0xM():
     print("="*50)
     print()
     
+    url=f"http://{_H0}:{_P0}"
+    
+    # 【新增】检测端口是否已被占用（防止重复启动）
+    if _is_port_in_use(_P0):
+        print(f"  ⚡ 服务已在运行: {url}")
+        print()
+        print("  检测到服务已启动，正在聚焦浏览器...")
+        print()
+        # 服务已运行，只打开浏览器访问，不重复启动
+        _open_browser_if_not_focused(url)
+        print("  提示: 如需重启服务，请先关闭已运行的实例")
+        print()
+        return
+    
     # 生成设备ID并注册
     device_id = _generate_device_id()
     print(f"  设备ID: {device_id[:20]}...")
@@ -4379,30 +4446,19 @@ def _0xM():
             pass
     threading.Thread(target=register_async, daemon=True).start()
     
-    # 启动时自动检查更新
-    print("  正在检查更新...")
-    try:
-        update_result = _0xCAU()
-        if update_result.get('updated'):
-            print(f"  ✅ {update_result.get('message')}")
-            print("  ⚠️  请重新启动程序以使用新版本")
-            input("  按回车键退出...")
-            return
-        elif update_result.get('checked'):
-            print(f"  ℹ️  {update_result.get('message')}")
-    except Exception as e:
-        print(f"  ⚠️  检查更新失败: {e}")
-    
     # 心跳线程已关闭（用于测试）
     # _start_heartbeat_thread()
     
-    sv=HTTPServer((_H0,_P0),_0xRH);url=f"http://{_H0}:{_P0}"
+    sv=HTTPServer((_H0,_P0),_0xRH)
     print(f"  服务已启动: {url}")
     print();print("  正在打开浏览器...");print();print("  按 Ctrl+C 停止服务");print()
-    def _ob():webbrowser.open(url)
+    
+    # 【优化】使用智能打开浏览器函数
+    def _ob():_open_browser_if_not_focused(url)
     threading.Timer(0.5,_ob).start()
     try:sv.serve_forever()
     except KeyboardInterrupt:print("\n  服务已停止");sv.shutdown()
+
 
 if __name__=='__main__':
     _0xCHK()
