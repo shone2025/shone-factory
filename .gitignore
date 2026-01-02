@@ -1,7 +1,0 @@
-__pycache__/
-*.pyc
-.DS_Store
-.device_id
-.sf_tickets.json
-.token_hashes.json
-*.backup.*

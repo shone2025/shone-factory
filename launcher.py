@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
 """
 ShoneFactory Token Key - 启动引导程序
-检测环境、自动更新并启动主程序
+检测环境并启动主程序
 """
 
 import os
 import sys
 import subprocess
 import platform
-import json
-import ssl
-import urllib.request
-import urllib.error
-import shutil
-from pathlib import Path
-
-# 云端配置
-_CLOUD_URL = "https://shone.ggff.net"
-_CLIENT_KEY = "shonefactory_client_2024"  # 与云端 SECURITY_CONFIG.CLIENT_SECRET 一致
-_LOCAL_VERSION = "3.4.1"  # 当前本地版本
 
 def get_os_type():
     """获取操作系统类型"""
@@ -41,6 +30,51 @@ def check_python():
     except:
         return False, "未检测到 Python"
 
+def check_tkinter():
+    """检测 Tkinter/Tcl 兼容性（macOS 专用）"""
+    if platform.system() != "Darwin":
+        return True, "非 macOS 系统"
+
+    # 使用子进程检测，避免主进程崩溃
+    test_code = '''
+import sys
+try:
+    import tkinter as tk
+    root = tk.Tk()
+    root.withdraw()
+    tcl_version = root.tk.call('info', 'patchlevel')
+    root.destroy()
+    print(f"OK:{tcl_version}")
+    sys.exit(0)
+except Exception as e:
+    print(f"ERROR:{e}")
+    sys.exit(1)
+'''
+    try:
+        result = subprocess.run(
+            [sys.executable, '-c', test_code],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        output = result.stdout.strip() + result.stderr.strip()
+
+        if result.returncode == 0 and output.startswith("OK:"):
+            tcl_version = output.split(":", 1)[1]
+            return True, f"Tcl/Tk {tcl_version}"
+        elif "macOS" in output and "required" in output:
+            return False, "Tcl/Tk 版本与 macOS 不兼容"
+        elif result.returncode != 0:
+            # 检查是否是 Abort trap（C 层面崩溃）
+            if result.returncode in [-6, 134]:  # SIGABRT
+                return False, "Tcl/Tk 版本与 macOS 不兼容"
+            return False, f"Tkinter 检测失败 (退出码: {result.returncode})"
+        return True, "Tkinter 可用"
+    except subprocess.TimeoutExpired:
+        return False, "Tkinter 检测超时"
+    except Exception as e:
+        return False, f"检测错误: {e}"
+
 def check_factory():
     """检测 Factory 安装"""
     os_type = get_os_type()
@@ -62,145 +96,6 @@ def check_factory():
         pass
     
     return False, factory_path
-
-def check_version():
-    """检查云端版本"""
-    try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        
-        # 不使用代理
-        no_proxy_handler = urllib.request.ProxyHandler({})
-        opener = urllib.request.build_opener(no_proxy_handler, urllib.request.HTTPSHandler(context=ctx))
-        
-        req = urllib.request.Request(
-            f"{_CLOUD_URL}/api/version",
-            headers={
-                'User-Agent': 'ShoneFactory-Client/1.0',
-                'Accept': 'application/json',
-                'X-Client-Key': _CLIENT_KEY
-            },
-            method='GET'
-        )
-        
-        with opener.open(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            if data.get('success') and data.get('version'):
-                return data['version']
-    except Exception as e:
-        print(f"  [!] 版本检查失败: {e}")
-    return None
-
-def compare_versions(local, remote):
-    """比较版本号，返回 True 表示需要更新"""
-    try:
-        local_parts = [int(x) for x in local.replace('v', '').split('.')]
-        remote_parts = [int(x) for x in remote.replace('v', '').split('.')]
-        
-        # 补齐长度
-        while len(local_parts) < 3:
-            local_parts.append(0)
-        while len(remote_parts) < 3:
-            remote_parts.append(0)
-        
-        for i in range(3):
-            if remote_parts[i] > local_parts[i]:
-                return True
-            elif remote_parts[i] < local_parts[i]:
-                return False
-        return False
-    except:
-        return False
-
-def download_update():
-    """从云端下载最新客户端代码"""
-    try:
-        import time
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        
-        no_proxy_handler = urllib.request.ProxyHandler({})
-        opener = urllib.request.build_opener(no_proxy_handler, urllib.request.HTTPSHandler(context=ctx))
-        
-        ts = str(int(time.time()))
-        req = urllib.request.Request(
-            f"{_CLOUD_URL}/api/download-client",
-            headers={
-                'User-Agent': 'ShoneFactory-Client/1.0',
-                'Accept': 'application/json',
-                'X-Client-Key': _CLIENT_KEY,
-                'X-Timestamp': ts
-            },
-            method='GET'
-        )
-        
-        with opener.open(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            if data.get('success') and data.get('code'):
-                return data['code']
-    except Exception as e:
-        print(f"  [!] 下载更新失败: {e}")
-    return None
-
-def apply_update(code):
-    """应用更新 - 替换 shone_client_web.py"""
-    try:
-        script_dir = Path(__file__).parent
-        main_script = script_dir / 'shone_client_web.py'
-        backup_script = script_dir / 'shone_client_web.py.bak'
-        
-        # 备份旧版本
-        if main_script.exists():
-            if backup_script.exists():
-                backup_script.unlink()
-            shutil.copy(main_script, backup_script)
-        
-        # 写入新版本
-        with open(main_script, 'w', encoding='utf-8') as f:
-            f.write(code)
-        
-        return True
-    except Exception as e:
-        print(f"  [!] 应用更新失败: {e}")
-        # 尝试恢复备份
-        try:
-            if backup_script.exists():
-                shutil.copy(backup_script, main_script)
-        except:
-            pass
-        return False
-
-def auto_update():
-    """自动更新流程"""
-    print("  [*] 检查更新...")
-    
-    version_info = check_version()
-    if not version_info:
-        print("  [!] 无法获取版本信息，跳过更新检查")
-        return False
-    
-    remote_version = version_info.get('current', version_info.get('latest', '0.0.0'))
-    
-    if compare_versions(_LOCAL_VERSION, remote_version):
-        print(f"  [*] 发现新版本: {_LOCAL_VERSION} -> {remote_version}")
-        print("  [*] 正在下载更新...")
-        
-        code = download_update()
-        if code:
-            print("  [*] 正在应用更新...")
-            if apply_update(code):
-                print(f"  [✓] 更新成功！已升级到 v{remote_version}")
-                return True
-            else:
-                print("  [!] 更新失败，将使用当前版本")
-        else:
-            print("  [!] 下载失败，将使用当前版本")
-    else:
-        print(f"  [✓] 当前已是最新版本 (v{_LOCAL_VERSION})")
-    
-    return False
 
 def get_install_commands():
     """获取安装命令"""
@@ -320,12 +215,7 @@ def main():
         print()
 
     if python_ok and factory_ok:
-        # 自动更新检查
         print("-" * 60)
-        auto_update()
-        print("-" * 60)
-        print()
-        
         print("  ✓ 环境检测通过，正在启动 Web 版程序...")
         print("-" * 60)
         print()

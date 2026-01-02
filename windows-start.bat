@@ -7,10 +7,10 @@ echo   SFK Token Manager - Starting...
 echo ========================================
 echo.
 
-REM Check Python and run launcher
+REM Check Python and run
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    python launcher.py
+    python shone_client_web.py
     if %ERRORLEVEL% NEQ 0 (
         echo.
         echo   [ERROR] Script execution failed
@@ -21,7 +21,7 @@ if %ERRORLEVEL% EQU 0 (
 
 where python3 >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    python3 launcher.py
+    python3 shone_client_web.py
     if %ERRORLEVEL% NEQ 0 (
         echo.
         echo   [ERROR] Script execution failed

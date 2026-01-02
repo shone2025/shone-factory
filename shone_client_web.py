@@ -7,6 +7,8 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
+VERSION = '3.3.5'
+
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
 def is_sf_key(s):return False
@@ -86,7 +88,7 @@ def _register_client():
             'device_id': device_id,
             'hostname': socket.gethostname(),
             'system': platform.system(),
-            'version': '1.0'
+            'version': '3.3.5'
         }).encode('utf-8')
         
         req = urllib.request.Request(
@@ -226,7 +228,7 @@ def _0xGCF():
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/config",headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -246,7 +248,7 @@ def _0xGVR():
         no_proxy_handler=urllib.request.ProxyHandler({})
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/version",headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json'
         },method='GET')
         with opener.open(rq,timeout=15)as rs:
@@ -266,7 +268,7 @@ def _0xRRF(sfkey_id):
         ts=str(int(time.time()))
         data=json.dumps({"sfkey_id":sfkey_id[:35]}).encode('utf-8')
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/refresh-request",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
@@ -285,7 +287,7 @@ def _0xGBA(sfkey_id):
         ts=str(int(time.time()))
         qid=sfkey_id.strip()[:35]
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/balance/{qid}",headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -307,7 +309,7 @@ def _0xCQ(sfkey_id):
         url=f"{_CLOUD_URL}/api/fast-query/{qid}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -317,7 +319,9 @@ def _0xCQ(sfkey_id):
             if r.get('success')and r.get('found')and r.get('data'):
                 enc=r.get('data','')
                 if enc:
-                    b64=enc.replace('_','=').replace('-','+').replace('.','/')
+                    # 修复: 正确的URL-safe Base64解码顺序
+                    # - -> +, _ -> /, . -> = (填充字符)
+                    b64=enc.replace('-','+').replace('_','/').replace('.','=')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     return json.loads(js)
@@ -335,7 +339,7 @@ def _0xCQU(user_id):
         url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -345,7 +349,8 @@ def _0xCQU(user_id):
             if r.get('success')and r.get('found')and r.get('data'):
                 enc=r.get('data','')
                 if enc:
-                    b64=enc.replace('_','=').replace('-','+').replace('.','/')
+                    # 修复: 正确的URL-safe Base64解码顺序
+                    b64=enc.replace('-','+').replace('_','/').replace('.','=')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     return json.loads(js)
@@ -361,7 +366,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -382,7 +387,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -392,7 +397,8 @@ def _0xCQC(sfkey_id):
             if r.get('success')and r.get('data'):
                 enc=r.get('data','')
                 if enc:
-                    b64=enc.replace('_','=').replace('-','+').replace('.','/')
+                    # 修复: 正确的URL-safe Base64解码顺序
+                    b64=enc.replace('-','+').replace('_','/').replace('.','=')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     print(f"[凭据查询] KV存储命中: {sfkey_id[:15]}...")
@@ -410,7 +416,7 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
             data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
             ts=str(int(time.time()))
             rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-                'User-Agent':'ShoneFactory-Client/1.0',
+                'User-Agent':'ShoneFactory-Client/3.3.5',
                 'Content-Type':'application/json',
                 'X-Client-Key':_CLIENT_KEY,
                 'X-Timestamp':ts
@@ -464,7 +470,7 @@ def _0xRCS(sfkey_id, remaining_minutes, client_online=True, is_active=False, usa
         }).encode('utf-8')
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -572,7 +578,7 @@ def _0xSTK(ticket_data):
         client_info = {
             "device_id": device_id,
             "platform": platform.system(),
-            "version": "1.0.0"
+            "version": "3.3.5"
         }
         
         data = json.dumps({
@@ -725,7 +731,7 @@ def _0xLC():
     ts=str(int(time.time()))
     try:
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/core",headers={
-            'User-Agent':'ShoneFactory-Client/1.0',
+            'User-Agent':'ShoneFactory-Client/3.3.5',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -755,7 +761,7 @@ _S1=_0k('\x3e\x2a\x2b\x37\x71\x35\x2c\x30\x31')
 _S2=_0k('\x3e\x30\x30\x3a\x28\x28\x70\x35\x38\x3c\x3a\x39')
 _S3=_0k('\x27\x3a\x3b\x27\x3a\x28\x3b\x70\x35\x38\x3c\x3a\x39')
 _S4=_0k('\x71\x39\x3e\x3c\x2b\x30\x2d\x26')
-_S5=_0k('\x1e\x0f\x0f\x1b\x1e\x0b\x1e')
+_S5=_0k('\x14\x28\x3a\x27\x11\x27\x38\x3b\x3c\x3f\x3a')
 _S6=_0d('aHR0cHM6Ly9hcHAuZmFjdG9yeS5haS9hcGkvb3JnYW5pemF0aW9uL21lbWJlcnMvY2hhdC11c2FnZQ==')
 _S7=_0d('aHR0cHM6Ly9hcGkuZmFjdG9yeS5haS9jbGkvYXV0aC9yZWZyZXNo')
 _S8=_0d('aHR0cHM6Ly9hcGkuZmFjdG9yeS5haS9hdXRoL3JlZnJlc2g=')
@@ -962,13 +968,13 @@ class _0xTM:
     def _0xwa(s,at,rt):
         """写入 auth.json 到配置目录"""
         _0xCHK()
-        
+
         # 写入 .factory/auth.json (droid 使用)
         try:
             factory_dir=Path.home()/'.factory'
             factory_dir.mkdir(parents=True,exist_ok=True)
             factory_file=factory_dir/'auth.json'
-            
+
             auth_data={'access_token':at,'refresh_token':rt}
             with open(factory_file,'w',encoding='utf-8')as f:
                 json.dump(auth_data,f,indent=2)
@@ -1014,8 +1020,8 @@ class _0xTM:
         po['accounts'].append(ac);s._0xsp(po)
         # 导入即切换：写入 auth.json
         s._0xwa(at,rt)
-        # v3.3.8新增: 添加后主动查询额度
-        s._0xfb(at,ki)
+        # v3.3.8新增: 添加后主动查询额度（使用 _0xrsa 确保 token 过期时先刷新）
+        s._0xrsa(len(po['accounts']),force_cloud=False)
         return{"success":True,"message":f"已添加并切换到: {ki[:35]}..."}
 
     def _0xat_multi(s,lines):
@@ -1059,9 +1065,9 @@ class _0xTM:
         # 切换到最后一个导入的账号
         if last_at and last_rt:
             s._0xwa(last_at,last_rt)
-            # v3.3.8新增: 添加后主动查询额度
+            # v3.3.8新增: 添加后主动查询额度（使用 _0xrsa 确保 token 过期时先刷新）
             if last_ki:
-                s._0xfb(last_at,last_ki)
+                s._0xrsa(len(po['accounts']),force_cloud=False)
         # 构建消息
         msg=f"导入完成：成功 {len(added)} 个"
         if skipped:msg+=f"，跳过 {len(skipped)} 个(已存在)"
@@ -1916,7 +1922,8 @@ class _0xTM:
         sfkl1=None
         for a in po['accounts']:
             if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
-                sfkl1=a.get('sf_key_line1','')
+                # v3.3.8: 优先使用sf_key_line1，为空时fallback到key_id
+                sfkl1=a.get('sf_key_line1','') or a.get('key_id','')
                 break
         if not sfkl1:return{"success":False,"message":"未找到账号"}
         # 从云端获取Cookie
@@ -2051,7 +2058,8 @@ class _0xTM:
         sfkl1=None
         for a in po['accounts']:
             if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
-                sfkl1=a.get('sf_key_line1','')
+                # v3.3.8: 优先使用sf_key_line1，为空时fallback到key_id
+                sfkl1=a.get('sf_key_line1','') or a.get('key_id','')
                 break
         if not sfkl1:return{"success":False,"message":"未找到账号"}
         
@@ -2221,24 +2229,30 @@ networksetup -setsocksfirewallproxystate '{active_service}' off
             return{"success":False,"message":f"恢复失败: {e}"}
 
     def _0xSRGC(s,key_id):
-        """获取账号凭据 - 从云端获取邮箱和密码 (v3.3.5: 增加本地备用)"""
+        """获取账号凭据 - 从云端获取邮箱和密码 (v3.3.5: 增加本地备用, v3.3.8: 修复sf_key_line1为空时的fallback)"""
         if not key_id:return{"success":False,"message":"未指定账号"}
         po=s._0xlp()
         sfkl1=None
         local_email=None  # v3.3.5: 本地备用邮箱
         for a in po['accounts']:
             if a.get('key_id','')==key_id or a.get('sf_key_line1','').startswith(key_id[:35]):
-                sfkl1=a.get('sf_key_line1','')
+                # v3.3.8: 优先使用sf_key_line1，为空时fallback到key_id
+                sfkl1=a.get('sf_key_line1','') or a.get('key_id','')
                 local_email=a.get('email','')  # 从本地获取邮箱作为备用
                 break
-        if not sfkl1:return{"success":False,"message":"未找到账号"}
+        if not sfkl1:
+            print(f"[凭据查询] 未找到账号: key_id={key_id[:20]}...")
+            return{"success":False,"message":"未找到账号"}
         # 从云端获取凭据
+        print(f"[凭据查询] 查询云端: sfkey_id={sfkl1[:35]}")
         cd=_0xCQC(sfkl1[:35])
         if not cd:
             # v3.3.5: 云端无凭据时，尝试返回本地邮箱
+            print(f"[凭据查询] 云端无数据，local_email={local_email}")
             if local_email:
                 return{"success":True,"email":local_email,"password":"","message":"密码需联系管理员获取"}
             return{"success":False,"message":"云端无凭据数据，请联系管理员同步"}
+        print(f"[凭据查询] 云端返回: email={cd.get('email','')[:10] if cd.get('email') else 'None'}, password={'有' if cd.get('password') else '无'}")
         return{"success":True,"email":cd.get('email',''),"password":cd.get('password','')}
 
     def _0xSRUA(s,key_id):
@@ -2268,7 +2282,8 @@ networksetup -setsocksfirewallproxystate '{active_service}' off
                     po['accounts'][i][_S3]=rt
                     po['accounts'][i]['exp']=ex
                     updated=True
-                    sfkl1=a.get('sf_key_line1','')
+                    # v3.3.8: 优先使用sf_key_line1，为空时fallback到key_id
+                    sfkl1=a.get('sf_key_line1','') or a.get('key_id','')
                     break
             if not updated:return{"success":False,"message":"账号池中未找到此账号"}
             s._0xsp(po)
@@ -2756,7 +2771,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.4.3</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.4.4</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
@@ -3796,13 +3811,17 @@ _H1='''<!DOCTYPE html>
         let currentRefreshKeyId = '';
         let currentRefreshRegion = '';
         let currentS5Proxy = '';
+        let currentRefreshPassword = '';
+        let currentRefreshEmail = '';
         async function requestRefresh(keyId) {
             currentRefreshKeyId = keyId;
+            currentRefreshPassword = '';
+            currentRefreshEmail = '';
             document.getElementById('selfRefreshModal').classList.add('active');
             document.getElementById('refreshKeyIdDisplay').textContent = keyId.substring(0, 35) + '...';
             // 隐藏代理信息（等待加载）
             document.getElementById('s5ProxyInfoBox').style.display = 'none';
-            
+
             // 获取账号的地区和代理信息
             const result = await api('get_account_region', { key_id: keyId });
             if (result.success && result.region) {
@@ -3814,7 +3833,7 @@ _H1='''<!DOCTYPE html>
                 document.getElementById('refreshRegionDisplay').textContent = '未设置';
                 document.getElementById('refreshRegionHint').textContent = '对应地区';
             }
-            
+
             // 显示S5代理信息
             if (result.success && result.s5_proxy) {
                 currentS5Proxy = result.s5_proxy;
@@ -3830,6 +3849,13 @@ _H1='''<!DOCTYPE html>
                 }
             } else {
                 currentS5Proxy = '';
+            }
+
+            // 预加载凭据信息（邮箱和密码）
+            const credResult = await api('self_refresh_get_credentials', { key_id: keyId });
+            if (credResult.success) {
+                currentRefreshEmail = credResult.email || '';
+                currentRefreshPassword = credResult.password || '';
             }
         }
         
@@ -3944,30 +3970,28 @@ _H1='''<!DOCTYPE html>
         }
         async function selfRefreshCopyEmail() {
             if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
-            const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
-            if (result.success && result.email) {
-                const copied = await copyToClipboard(result.email);
+            if (currentRefreshEmail) {
+                const copied = await copyToClipboard(currentRefreshEmail);
                 if (copied) {
                     showToast('账号已复制到剪贴板', 'success');
                 } else {
-                    showToast('复制失败，请手动复制: ' + result.email, 'error');
+                    showToast('复制失败，请手动复制: ' + currentRefreshEmail, 'error');
                 }
             } else {
-                showToast(result.message || 'Failed to get email', 'error');
+                showToast('未获取到邮箱信息，请联系管理员同步', 'error');
             }
         }
         async function selfRefreshCopyPassword() {
             if (!currentRefreshKeyId) { showToast('Please select an account first', 'error'); return; }
-            const result = await api('self_refresh_get_credentials', { key_id: currentRefreshKeyId });
-            if (result.success && result.password) {
-                const copied = await copyToClipboard(result.password);
+            if (currentRefreshPassword) {
+                const copied = await copyToClipboard(currentRefreshPassword);
                 if (copied) {
                     showToast('密码已复制到剪贴板', 'success');
                 } else {
-                    showToast('复制失败，请手动复制: ' + result.password, 'error');
+                    showToast('复制失败，请手动复制: ' + currentRefreshPassword, 'error');
                 }
             } else {
-                showToast(result.message || 'Failed to get password', 'error');
+                showToast('未获取到密码信息，请联系管理员同步', 'error');
             }
         }
         async function selfRefreshUpdateAccount() {
