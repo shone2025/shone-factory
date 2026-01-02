@@ -11,22 +11,26 @@ REM Check Python and run
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     python shone_client_web.py
+    echo.
     if %ERRORLEVEL% NEQ 0 (
-        echo.
-        echo   [ERROR] Script execution failed
-        pause
+        echo   [ERROR] Script execution failed with code %ERRORLEVEL%
+    ) else (
+        echo   Script finished.
     )
+    pause
     goto :end
 )
 
 where python3 >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     python3 shone_client_web.py
+    echo.
     if %ERRORLEVEL% NEQ 0 (
-        echo.
-        echo   [ERROR] Script execution failed
-        pause
+        echo   [ERROR] Script execution failed with code %ERRORLEVEL%
+    ) else (
+        echo   Script finished.
     )
+    pause
     goto :end
 )
 
