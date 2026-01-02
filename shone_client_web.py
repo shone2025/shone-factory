@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.5'
+VERSION = '3.4.6'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -88,7 +88,7 @@ def _register_client():
             'device_id': device_id,
             'hostname': socket.gethostname(),
             'system': platform.system(),
-            'version': '3.4.5'
+            'version': '3.4.6'
         }).encode('utf-8')
         
         req = urllib.request.Request(
@@ -228,7 +228,7 @@ def _0xGCF():
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/config",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -248,7 +248,7 @@ def _0xGVR():
         no_proxy_handler=urllib.request.ProxyHandler({})
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/version",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json'
         },method='GET')
         with opener.open(rq,timeout=15)as rs:
@@ -268,7 +268,7 @@ def _0xRRF(sfkey_id):
         ts=str(int(time.time()))
         data=json.dumps({"sfkey_id":sfkey_id[:35]}).encode('utf-8')
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/refresh-request",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
@@ -287,7 +287,7 @@ def _0xGBA(sfkey_id):
         ts=str(int(time.time()))
         qid=sfkey_id.strip()[:35]
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/balance/{qid}",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -309,7 +309,7 @@ def _0xCQ(sfkey_id):
         url=f"{_CLOUD_URL}/api/fast-query/{qid}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -339,7 +339,7 @@ def _0xCQU(user_id):
         url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -366,7 +366,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -387,7 +387,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -416,7 +416,7 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
             data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
             ts=str(int(time.time()))
             rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-                'User-Agent':'ShoneFactory-Client/3.4.5',
+                'User-Agent':'ShoneFactory-Client/3.4.6',
                 'Content-Type':'application/json',
                 'X-Client-Key':_CLIENT_KEY,
                 'X-Timestamp':ts
@@ -470,7 +470,7 @@ def _0xRCS(sfkey_id, remaining_minutes, client_online=True, is_active=False, usa
         }).encode('utf-8')
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -578,7 +578,7 @@ def _0xSTK(ticket_data):
         client_info = {
             "device_id": device_id,
             "platform": platform.system(),
-            "version": "3.4.5"
+            "version": "3.4.6"
         }
         
         data = json.dumps({
@@ -731,7 +731,7 @@ def _0xLC():
     ts=str(int(time.time()))
     try:
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/core",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.5',
+            'User-Agent':'ShoneFactory-Client/3.4.6',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
