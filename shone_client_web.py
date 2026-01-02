@@ -321,7 +321,7 @@ def _0xCQ(sfkey_id):
                 if enc:
                     # 修复: 正确的URL-safe Base64解码顺序
                     # - -> +, _ -> /, . -> = (填充字符)
-                    b64=enc.replace('-','+').replace('_','/').replace('.','=')
+                    b64=enc.replace('-','+').replace('_','=').replace('.','/')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     return json.loads(js)
@@ -350,7 +350,7 @@ def _0xCQU(user_id):
                 enc=r.get('data','')
                 if enc:
                     # 修复: 正确的URL-safe Base64解码顺序
-                    b64=enc.replace('-','+').replace('_','/').replace('.','=')
+                    b64=enc.replace('-','+').replace('_','=').replace('.','/')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     return json.loads(js)
@@ -398,7 +398,7 @@ def _0xCQC(sfkey_id):
                 enc=r.get('data','')
                 if enc:
                     # 修复: 正确的URL-safe Base64解码顺序
-                    b64=enc.replace('-','+').replace('_','/').replace('.','=')
+                    b64=enc.replace('-','+').replace('_','=').replace('.','/')
                     b64=b64[::-1]
                     js=base64.b64decode(b64).decode('utf-8')
                     print(f"[凭据查询] KV存储命中: {sfkey_id[:15]}...")
