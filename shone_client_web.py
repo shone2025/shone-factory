@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.7'
+VERSION = '3.4.8'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -88,7 +88,7 @@ def _register_client():
             'device_id': device_id,
             'hostname': socket.gethostname(),
             'system': platform.system(),
-            'version': '3.4.7'
+            'version': '3.4.8'
         }).encode('utf-8')
         
         req = urllib.request.Request(
@@ -228,7 +228,7 @@ def _0xGCF():
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/config",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -248,7 +248,7 @@ def _0xGVR():
         no_proxy_handler=urllib.request.ProxyHandler({})
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/version",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json'
         },method='GET')
         with opener.open(rq,timeout=15)as rs:
@@ -259,6 +259,82 @@ def _0xGVR():
     except Exception as e:
         return {"success":False,"message":f"检查失败: {e}"}
 
+def _0xAU():
+    """从云端下载并更新客户端主文件"""
+    try:
+        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        no_proxy_handler=urllib.request.ProxyHandler({})
+        opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
+        rq=urllib.request.Request(f"{_CLOUD_URL}/api/download-client",headers={
+            'User-Agent':f'ShoneFactory-Client/{VERSION}',
+            'Accept':'application/json',
+            'X-Client-Key':_CLIENT_KEY,
+            'X-Timestamp':str(int(time.time()))
+        },method='GET')
+        with opener.open(rq,timeout=30)as rs:
+            r=json.loads(rs.read().decode('utf-8'))
+            if r.get('success') and r.get('code'):
+                # 获取当前脚本路径
+                current_file=Path(__file__).resolve()
+                backup_file=current_file.with_suffix('.py.bak')
+                
+                # 备份当前文件
+                if current_file.exists():
+                    import shutil
+                    if backup_file.exists():
+                        backup_file.unlink()
+                    shutil.copy(current_file, backup_file)
+                
+                # 写入新文件
+                with open(current_file,'w',encoding='utf-8')as f:
+                    f.write(r.get('code'))
+                
+                return {
+                    "success":True,
+                    "message":f"更新成功! 新版本: {r.get('version','unknown')}",
+                    "version":r.get('version'),
+                    "need_restart":True
+                }
+            else:
+                return {"success":False,"message":r.get('message','下载失败')}
+    except urllib.error.URLError as e:
+        return {"success":False,"message":f"网络错误: {e.reason}"}
+    except Exception as e:
+        return {"success":False,"message":f"更新失败: {e}"}
+
+def _0xCAU():
+    """检查并自动更新（启动时调用）"""
+    try:
+        # 获取云端版本
+        vr=_0xGVR()
+        if not vr.get('success'):
+            return {"checked":True,"updated":False,"message":"无法检查更新"}
+        
+        cloud_version=vr.get('version',{}).get('current','0.0.0')
+        local_version=VERSION
+        
+        # 版本比较
+        def version_tuple(v):
+            try:
+                return tuple(map(int,v.replace('v','').split('.')))
+            except:
+                return (0,0,0)
+        
+        if version_tuple(cloud_version)>version_tuple(local_version):
+            print(f"  📦 发现新版本: {local_version} -> {cloud_version}")
+            result=_0xAU()
+            if result.get('success'):
+                print(f"  ✅ 更新成功，请重启程序")
+                return {"checked":True,"updated":True,"message":f"已更新到 {cloud_version}，请重启程序","need_restart":True}
+            else:
+                print(f"  ⚠️ 更新失败: {result.get('message')}")
+                return {"checked":True,"updated":False,"message":result.get('message')}
+        else:
+            print(f"  ✅ 已是最新版本: {local_version}")
+            return {"checked":True,"updated":False,"message":"已是最新版本"}
+    except Exception as e:
+        return {"checked":True,"updated":False,"message":f"检查更新出错: {e}"}
+
 def _0xRRF(sfkey_id):
     """向云端提交刷新请求"""
     if not sfkey_id:
@@ -268,7 +344,7 @@ def _0xRRF(sfkey_id):
         ts=str(int(time.time()))
         data=json.dumps({"sfkey_id":sfkey_id[:35]}).encode('utf-8')
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/refresh-request",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
@@ -287,7 +363,7 @@ def _0xGBA(sfkey_id):
         ts=str(int(time.time()))
         qid=sfkey_id.strip()[:35]
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/balance/{qid}",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -309,7 +385,7 @@ def _0xCQ(sfkey_id):
         url=f"{_CLOUD_URL}/api/fast-query/{qid}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -339,7 +415,7 @@ def _0xCQU(user_id):
         url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -366,7 +442,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -387,7 +463,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -416,7 +492,7 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
             data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
             ts=str(int(time.time()))
             rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-                'User-Agent':'ShoneFactory-Client/3.4.7',
+                'User-Agent':'ShoneFactory-Client/3.4.8',
                 'Content-Type':'application/json',
                 'X-Client-Key':_CLIENT_KEY,
                 'X-Timestamp':ts
@@ -470,7 +546,7 @@ def _0xRCS(sfkey_id, remaining_minutes, client_online=True, is_active=False, usa
         }).encode('utf-8')
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.7',
+            'User-Agent':'ShoneFactory-Client/3.4.8',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -578,7 +654,7 @@ def _0xSTK(ticket_data):
         client_info = {
             "device_id": device_id,
             "platform": platform.system(),
-            "version": "3.4.7"
+            "version": "3.4.8"
         }
         
         data = json.dumps({
@@ -4591,7 +4667,11 @@ def _0xM():
     print()
     
     # 【启动时检查更新】
-    _check_and_auto_update()
+    update_result = _0xCAU()
+    if update_result.get('need_restart'):
+        print("  🔄 请重启程序以应用更新")
+        input("  按回车键退出...")
+        return
     
     url=f"http://{_H0}:{_P0}"
     
