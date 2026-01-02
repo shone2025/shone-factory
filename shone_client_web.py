@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.8'
+VERSION = '3.4.9'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -228,7 +228,7 @@ def _0xGCF():
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/config",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -248,7 +248,7 @@ def _0xGVR():
         no_proxy_handler=urllib.request.ProxyHandler({})
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/version",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json'
         },method='GET')
         with opener.open(rq,timeout=15)as rs:
@@ -344,7 +344,7 @@ def _0xRRF(sfkey_id):
         ts=str(int(time.time()))
         data=json.dumps({"sfkey_id":sfkey_id[:35]}).encode('utf-8')
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/refresh-request",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
@@ -363,7 +363,7 @@ def _0xGBA(sfkey_id):
         ts=str(int(time.time()))
         qid=sfkey_id.strip()[:35]
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/balance/{qid}",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -385,7 +385,7 @@ def _0xCQ(sfkey_id):
         url=f"{_CLOUD_URL}/api/fast-query/{qid}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -415,7 +415,7 @@ def _0xCQU(user_id):
         url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -442,7 +442,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -463,7 +463,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -492,7 +492,7 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
             data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
             ts=str(int(time.time()))
             rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-                'User-Agent':'ShoneFactory-Client/3.4.8',
+                'User-Agent':'ShoneFactory-Client/3.4.9',
                 'Content-Type':'application/json',
                 'X-Client-Key':_CLIENT_KEY,
                 'X-Timestamp':ts
@@ -546,7 +546,7 @@ def _0xRCS(sfkey_id, remaining_minutes, client_online=True, is_active=False, usa
         }).encode('utf-8')
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.8',
+            'User-Agent':'ShoneFactory-Client/3.4.9',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -895,6 +895,15 @@ class _0xTM:
             return ad.get('access_token',None)
         except:return None
 
+    def _0xgcrt(s):
+        """v3.4.9: 获取当前登录的 refresh_token"""
+        try:
+            af=s._0xfp()/_S1
+            if not af.exists():return None
+            with open(af,'r',encoding='utf-8')as f:ad=json.load(f)
+            return ad.get('refresh_token',None)
+        except:return None
+
     def _0xgcad(s):
         try:
             af=s._0xfp()/_S1
@@ -925,43 +934,71 @@ class _0xTM:
         return{"synced":True,"message":f"已自动导入当前登录账号: {ki}","key_id":ki}
 
     def _0xgcli(s):
+        """v3.4.9: 改进的当前登录信息获取 - 增强token匹配逻辑"""
         ad=s._0xgcad()
         if not ad:return None
-        at=ad.get(_S2,'');rt=ad.get(_S3,'')
+        at=ad.get(_S2,'') or ad.get('access_token','')
+        rt=ad.get(_S3,'') or ad.get('refresh_token','')
         if not at:return None
         pl=s._0xdj(at)
         if not pl:return None
         ex=pl.get('exp',0);nw=datetime.now().timestamp();sb=pl.get('sub','');em=pl.get('email','')
+        user_id=pl.get('id','') or pl.get('sub','')
         po=s._0xlp();sfk='';in_pool=False
-        # 第一优先：通过 access_token 完全匹配（切换账号后 token 会更新到账号池）
+        
+        # 第一优先：通过 access_token 完全匹配
         for a in po['accounts']:
-            if a.get(_S2,'')==at:
+            if a.get(_S2,'')==at or a.get('access_token','')==at:
                 sfk=a.get('sf_key_line1','')or a.get('key_id','')
                 in_pool=True
                 break
+        
         # 第二优先：通过 refresh_token 匹配（refresh_token 比 access_token 更稳定）
-        if not in_pool:
+        if not in_pool and rt:
             for a in po['accounts']:
-                if rt and a.get(_S3,'')==rt:
+                if a.get(_S3,'')==rt or a.get('refresh_token','')==rt:
                     sfk=a.get('sf_key_line1','')or a.get('key_id','')
                     in_pool=True
+                    # v3.4.9: 同步更新本地池中的 access_token（因为通过rt匹配说明at已变化）
+                    a[_S2]=at
+                    a['exp']=ex
+                    s._0xsp(po)
+                    print(f"[登录检测] 通过refresh_token匹配成功，已更新access_token: {sfk[:20]}...")
                     break
+        
+        # 第三优先：通过 user_id 匹配（从JWT中提取）
+        if not in_pool and user_id:
+            for a in po['accounts']:
+                a_sfk=a.get('sf_key_line1','')or a.get('key_id','')
+                # sfkey格式: SF-{user_id前32位}，比较前35字符
+                expected_sfk=f"SF-{user_id[:32]}"
+                if a_sfk.startswith(expected_sfk[:20]):
+                    sfk=a_sfk
+                    in_pool=True
+                    # 更新账号池中的token
+                    a[_S2]=at
+                    a[_S3]=rt
+                    a['exp']=ex
+                    s._0xsp(po)
+                    print(f"[登录检测] 通过user_id匹配成功，已更新token: {sfk[:20]}...")
+                    break
+        
         # 如果不在本地池中，自动上传到云端并生成 sfkey
         if not in_pool and at and rt:
             try:
                 # 生成 sfkey_id (使用 user_id 的前35字符或生成新的)
-                sfkey_id=f"SF-{sb[:32]}" if sb else f"SF-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                sfkey_id=f"SF-{user_id[:32]}" if user_id else f"SF-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 sfkey_id=sfkey_id[:35]
                 # 上传到云端
                 import urllib.request
-                data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"email":em,"exp":ex,"user_id":sb}).encode('utf-8')
+                data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"email":em,"exp":ex,"user_id":user_id}).encode('utf-8')
                 req=urllib.request.Request(f"{_CLOUD_URL}/api/update",data=data,headers={'Content-Type':'application/json','X-API-Key':_CLIENT_KEY},method='POST')
                 with urllib.request.urlopen(req,timeout=15)as resp:
                     result=json.loads(resp.read().decode('utf-8'))
                     if result.get('success'):
                         sfk=sfkey_id
                         # 添加到本地池
-                        rm=em if em else(f"用户: {sb[:8]}..."if sb else"自动导入")
+                        rm=em if em else(f"用户: {user_id[:8]}..."if user_id else"自动导入")
                         ac={"key_id":sfkey_id,"sf_key_line1":sfkey_id,_S2:at,_S3:rt,"remark":rm,"added_at":datetime.now().strftime('%Y-%m-%d %H:%M:%S'),"exp":ex}
                         po['accounts'].append(ac);s._0xsp(po)
                         in_pool=True
@@ -1096,8 +1133,16 @@ class _0xTM:
         po['accounts'].append(ac);s._0xsp(po)
         # 导入即切换：写入 auth.json
         s._0xwa(at,rt)
-        # v3.3.8新增: 添加后主动查询额度（使用 _0xrsa 确保 token 过期时先刷新）
-        s._0xrsa(len(po['accounts']),force_cloud=False)
+        # v3.4.9改进: 添加后主动查询额度，并等待结果
+        try:
+            print(f"[额度查询] 正在查询新添加账号的额度: {ki[:35]}...")
+            balance_result = s._0xrsa(len(po['accounts']),force_cloud=False)
+            if balance_result.get('success'):
+                print(f"[额度查询] 查询成功: {ki[:35]}...")
+            else:
+                print(f"[额度查询] 查询失败: {balance_result.get('message', '未知错误')}")
+        except Exception as e:
+            print(f"[额度查询] 查询异常: {e}")
         return{"success":True,"message":f"已添加并切换到: {ki[:35]}..."}
 
     def _0xat_multi(s,lines):
@@ -1141,9 +1186,15 @@ class _0xTM:
         # 切换到最后一个导入的账号
         if last_at and last_rt:
             s._0xwa(last_at,last_rt)
-            # v3.3.8新增: 添加后主动查询额度（使用 _0xrsa 确保 token 过期时先刷新）
+            # v3.4.9改进: 添加后主动查询额度
             if last_ki:
-                s._0xrsa(len(po['accounts']),force_cloud=False)
+                try:
+                    print(f"[额度查询] 正在查询新添加账号的额度: {last_ki[:35]}...")
+                    balance_result = s._0xrsa(len(po['accounts']),force_cloud=False)
+                    if balance_result.get('success'):
+                        print(f"[额度查询] 查询成功: {last_ki[:35]}...")
+                except Exception as e:
+                    print(f"[额度查询] 查询异常: {e}")
         # 构建消息
         msg=f"导入完成：成功 {len(added)} 个"
         if skipped:msg+=f"，跳过 {len(skipped)} 个(已存在)"
@@ -1187,9 +1238,18 @@ class _0xTM:
         return {"success":True,"message":f"启动检查完成","synced":synced_count}
 
     def _0xgal(s):
-        po=s._0xlp();nw=datetime.now().timestamp();ct=s._0xgct();al=[]
+        po=s._0xlp();nw=datetime.now().timestamp();ct=s._0xgct();ct_rt=s._0xgcrt();al=[]
         for i,a in enumerate(po['accounts'],1):
-            ex=a.get('exp',0);ki=a.get('key_id',f'shonetokenkey{i:03d}');ic=a.get(_S2,'')==ct if ct else False
+            ex=a.get('exp',0);ki=a.get('key_id',f'shonetokenkey{i:03d}')
+            # v3.4.9: 改进当前账号匹配逻辑 - 同时支持access_token和refresh_token匹配
+            ic=False
+            if ct:
+                # 优先匹配 access_token
+                if a.get(_S2,'')==ct:
+                    ic=True
+                # 如果 access_token 不匹配，尝试匹配 refresh_token（更稳定）
+                elif ct_rt and a.get(_S3,'')==ct_rt:
+                    ic=True
             sfkl1=a.get('sf_key_line1','')
             # 如果 exp 为 0 或已过期但有 refresh_token，显示为"待刷新"而非"过期"
             if ex==0:st='pending';stx='待验证'
@@ -2847,7 +2907,7 @@ _H1='''<!DOCTYPE html>
 </head>
 <body>
     <div class="top-bar">
-        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.4.4</span></h1>
+        <h1>SFK <span style="font-size: 12px; font-weight: 400; opacity: 0.7;">V3.4.9</span></h1>
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="lang-switch" id="themeSwitch" onclick="toggleTheme()">☀</button>
             <button class="lang-switch" id="langSwitch" onclick="toggleLanguage()">EN</button>
