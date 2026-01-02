@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9'
+VERSION = '3.4.9.1'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -228,7 +228,7 @@ def _0xGCF():
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/config",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -248,7 +248,7 @@ def _0xGVR():
         no_proxy_handler=urllib.request.ProxyHandler({})
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/version",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json'
         },method='GET')
         with opener.open(rq,timeout=15)as rs:
@@ -344,7 +344,7 @@ def _0xRRF(sfkey_id):
         ts=str(int(time.time()))
         data=json.dumps({"sfkey_id":sfkey_id[:35]}).encode('utf-8')
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/refresh-request",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
@@ -363,7 +363,7 @@ def _0xGBA(sfkey_id):
         ts=str(int(time.time()))
         qid=sfkey_id.strip()[:35]
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/balance/{qid}",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -385,7 +385,7 @@ def _0xCQ(sfkey_id):
         url=f"{_CLOUD_URL}/api/fast-query/{qid}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -415,7 +415,7 @@ def _0xCQU(user_id):
         url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -442,7 +442,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -463,7 +463,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -492,7 +492,7 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
             data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
             ts=str(int(time.time()))
             rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-                'User-Agent':'ShoneFactory-Client/3.4.9',
+                'User-Agent':'ShoneFactory-Client/3.4.9.1',
                 'Content-Type':'application/json',
                 'X-Client-Key':_CLIENT_KEY,
                 'X-Timestamp':ts
@@ -546,7 +546,7 @@ def _0xRCS(sfkey_id, remaining_minutes, client_online=True, is_active=False, usa
         }).encode('utf-8')
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9',
+            'User-Agent':'ShoneFactory-Client/3.4.9.1',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -934,7 +934,7 @@ class _0xTM:
         return{"synced":True,"message":f"已自动导入当前登录账号: {ki}","key_id":ki}
 
     def _0xgcli(s):
-        """v3.4.9: 改进的当前登录信息获取 - 增强token匹配逻辑"""
+        """v3.4.9.1: 改进的当前登录信息获取 - 增加邮箱匹配"""
         ad=s._0xgcad()
         if not ad:return None
         at=ad.get(_S2,'') or ad.get('access_token','')
@@ -981,6 +981,21 @@ class _0xTM:
                     a['exp']=ex
                     s._0xsp(po)
                     print(f"[登录检测] 通过user_id匹配成功，已更新token: {sfk[:20]}...")
+                    break
+        
+        # 第四优先：通过邮箱匹配（邮箱是最稳定的标识符，从云端同步下来）
+        if not in_pool and em:
+            for a in po['accounts']:
+                a_email=a.get('email','')
+                if a_email and a_email.lower()==em.lower():
+                    sfk=a.get('sf_key_line1','')or a.get('key_id','')
+                    in_pool=True
+                    # 更新账号池中的token
+                    a[_S2]=at
+                    a[_S3]=rt
+                    a['exp']=ex
+                    s._0xsp(po)
+                    print(f"[登录检测] 通过邮箱匹配成功({em})，已更新token: {sfk[:20]}...")
                     break
         
         # 如果不在本地池中，自动上传到云端并生成 sfkey
@@ -1238,18 +1253,32 @@ class _0xTM:
         return {"success":True,"message":f"启动检查完成","synced":synced_count}
 
     def _0xgal(s):
-        po=s._0xlp();nw=datetime.now().timestamp();ct=s._0xgct();ct_rt=s._0xgcrt();al=[]
+        po=s._0xlp();nw=datetime.now().timestamp();ct=s._0xgct();ct_rt=s._0xgcrt()
+        # v3.4.9.1: 获取当前登录的邮箱用于匹配
+        ct_email=''
+        ct_ad=s._0xgcad()
+        if ct_ad:
+            ct_at=ct_ad.get(_S2,'') or ct_ad.get('access_token','')
+            if ct_at:
+                ct_pl=s._0xdj(ct_at)
+                if ct_pl:
+                    ct_email=ct_pl.get('email','')
+        al=[]
         for i,a in enumerate(po['accounts'],1):
             ex=a.get('exp',0);ki=a.get('key_id',f'shonetokenkey{i:03d}')
-            # v3.4.9: 改进当前账号匹配逻辑 - 同时支持access_token和refresh_token匹配
+            # v3.4.9.1: 改进当前账号匹配逻辑 - 支持access_token/refresh_token/邮箱匹配
             ic=False
             if ct:
-                # 优先匹配 access_token
+                # 第一优先：匹配 access_token
                 if a.get(_S2,'')==ct:
                     ic=True
-                # 如果 access_token 不匹配，尝试匹配 refresh_token（更稳定）
+                # 第二优先：匹配 refresh_token（更稳定）
                 elif ct_rt and a.get(_S3,'')==ct_rt:
                     ic=True
+                # 第三优先：匹配邮箱（最稳定的标识符）
+                elif ct_email and a.get('email',''):
+                    if a.get('email','').lower()==ct_email.lower():
+                        ic=True
             sfkl1=a.get('sf_key_line1','')
             # 如果 exp 为 0 或已过期但有 refresh_token，显示为"待刷新"而非"过期"
             if ex==0:st='pending';stx='待验证'
@@ -3654,10 +3683,12 @@ _H1='''<!DOCTYPE html>
         }
         function clearInput() { document.getElementById('tokenInput').value = ''; }
         
-        // 服务状态检测和自动重连
+        // 服务状态检测和自动重连 - v3.4.9.1: 增加容错机制，避免频繁提醒
         let serverOnline = true;
         let reconnectAttempts = 0;
+        let consecutiveFailures = 0;  // v3.4.9.1: 连续失败计数
         const maxReconnectAttempts = 100;
+        const failureThreshold = 3;   // v3.4.9.1: 连续失败3次才显示断开提示
         
         async function checkServerStatus() {
             try {
@@ -3668,6 +3699,7 @@ _H1='''<!DOCTYPE html>
                     signal: AbortSignal.timeout(3000)
                 });
                 if (response.ok) {
+                    consecutiveFailures = 0;  // 重置失败计数
                     if (!serverOnline) {
                         serverOnline = true;
                         reconnectAttempts = 0;
@@ -3680,9 +3712,13 @@ _H1='''<!DOCTYPE html>
                     return true;
                 }
             } catch (e) {
-                if (serverOnline) {
+                consecutiveFailures++;  // 增加失败计数
+                // v3.4.9.1: 只有连续失败多次才显示断开提示，避免网络波动的误报
+                if (serverOnline && consecutiveFailures >= failureThreshold) {
                     serverOnline = false;
-                    showToast(t('connectionLost'), 'error');
+                    // v3.4.9.1: 禁用重连提示，避免影响用户体验
+                    // showToast(t('connectionLost'), 'error');
+                    console.log('[v3.4.9.1] 服务连接断开，尝试重连...');
                 }
             }
             return false;
