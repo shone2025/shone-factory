@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.3'
+VERSION = '3.4.9.2'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -2002,12 +2002,37 @@ class _0xTM:
         except:pass
         return None
 
-    def _0xrab(s,force_cloud=False):
+    def _0xrab(s,force_cloud=False,refresh_all_valid=False):
         """刷新所有账号额度
         force_cloud: True=同步云端后刷新（用户手动触发）, False=仅刷新当前账号（后台自动刷新用）
+        refresh_all_valid: True=刷新所有有效账号（前20个使用率<95%的账号），用于页面加载时
         """
         po=s._0xlp();rs=[];nw=datetime.now().timestamp()
         ct=s._0xgct()  # 当前登录的 access_token
+        
+        if refresh_all_valid:
+            # v3.4.9.2: 刷新前20个有效账号（使用率<95%）
+            valid_accounts=[]
+            for i,a in enumerate(po['accounts']):
+                cb=a.get('cached_balance',{})
+                ur=cb.get('usedRatio',0)
+                ex=a.get('exp',0)
+                rt=a.get(_S3,'')
+                # 有效账号：未过期或有refresh_token，且使用率<95%
+                if (ex>nw or rt) and ur<0.95:
+                    valid_accounts.append((i,a))
+            # 限制前20个
+            valid_accounts=valid_accounts[:20]
+            print(f"[额度查询] 正在刷新 {len(valid_accounts)} 个有效账号的额度...")
+            for i,a in valid_accounts:
+                ki=a.get('key_id','')
+                at=a.get(_S2,'')
+                if at:
+                    sc=s._0xfb(at,ki)
+                    rs.append({'key_id':ki,'success':sc})
+            # 检查自动切换
+            s._0xCheckAutoSwitch()
+            return rs
         
         if force_cloud:
             # 用户手动刷新：刷新所有账号
@@ -2015,6 +2040,8 @@ class _0xTM:
                 ki=a.get('key_id','')
                 rr=s._0xrsa(i+1,force_cloud=True)
                 rs.append({'key_id':ki,'success':rr.get('success',False)})
+            # 检查自动切换
+            s._0xCheckAutoSwitch()
         else:
             # 后台自动刷新：只刷新当前登录账号
             for i,a in enumerate(po['accounts']):
@@ -2022,8 +2049,49 @@ class _0xTM:
                     ki=a.get('key_id','')
                     rr=s._0xrsa(i+1,force_cloud=False)
                     rs.append({'key_id':ki,'success':rr.get('success',False)})
+                    # 检查自动切换
+                    s._0xCheckAutoSwitch()
                     break
         return rs
+    
+    def _0xCheckAutoSwitch(s):
+        """v3.4.9.2: 检查是否需要自动切换
+        当开启自动切换且当前账号使用率>99%时，自动切换到最低使用率账号
+        """
+        po=s._0xlp()
+        if not po.get('auto_switch',False):
+            return {"success":False,"message":"自动切换未开启"}
+        
+        # 获取当前账号
+        ct=s._0xgct()
+        if not ct:
+            return {"success":False,"message":"无当前登录账号"}
+        
+        # 查找当前账号并检查使用率
+        current_idx=-1
+        current_usage=0
+        for i,a in enumerate(po['accounts']):
+            a_at=a.get(_S2,'') or a.get('access_token','')
+            if a_at==ct:
+                current_idx=i
+                cb=a.get('cached_balance',{})
+                current_usage=cb.get('usedRatio',0)
+                break
+        
+        if current_idx<0:
+            return {"success":False,"message":"当前账号不在账号池中"}
+        
+        # 如果使用率>99%（0.99），自动切换
+        if current_usage>=0.99:
+            print(f"[自动切换] 当前账号使用率 {current_usage*100:.1f}% > 99%，正在切换到最低使用率账号...")
+            result=s._0xsbo()  # 切换到最优账号
+            if result.get('success'):
+                print(f"[自动切换] 成功切换: {result.get('message','')}")
+            else:
+                print(f"[自动切换] 切换失败: {result.get('message','')}")
+            return result
+        
+        return {"success":False,"message":f"当前使用率 {current_usage*100:.1f}% 未达到切换阈值"}
 
     def _0xgbi(s,ki):return s._0bc.get(ki,{})
 
@@ -4423,6 +4491,22 @@ _H1='''<!DOCTYPE html>
         }
         checkActiveTokenOnStartup();
         
+        // v3.4.9.2: 页面加载时自动刷新所有有效账号的额度（前20个使用率<95%的账号）
+        async function refreshAllValidBalancesOnStartup() {
+            try {
+                console.log('[额度查询] 正在刷新所有有效账号的额度...');
+                const result = await api('refresh_all_valid');
+                if (result.success) {
+                    console.log('[额度查询] 刷新完成');
+                    loadAccounts();  // 刷新账号列表以显示最新额度
+                }
+            } catch (e) {
+                console.log('[额度查询] 执行失败:', e);
+            }
+        }
+        // 延迟1秒执行，等待页面完全加载
+        setTimeout(refreshAllValidBalancesOnStartup, 1000);
+        
         // 刷新保护功能
         let refreshProtectEnabled = true;
         let autoRefreshInterval = null;
@@ -4589,7 +4673,8 @@ class _0xRH(BaseHTTPRequestHandler):
                 elif ac=='delete':r=s._0m._0xda(d.get('index',0))
                 elif ac=='remark':r=s._0m._0xur(d.get('index',0),d.get('remark',''))
                 elif ac=='refresh':r=s._0m._0xrsa(d.get('index',0),force_cloud=True)
-                elif ac=='refresh_balances':s._0m._0xrab(force_cloud=True);r={"success":True,"message":"额度查询完成"}
+                elif ac=='refresh_balances':s._0m._0xrab(force_cloud=True);s._0m._0xCheckAutoSwitch();r={"success":True,"message":"额度查询完成"}
+                elif ac=='refresh_all_valid':s._0m._0xrab(refresh_all_valid=True);r={"success":True,"message":"有效账号额度刷新完成"}
                 elif ac=='auto_refresh':s._0m._0xrab(force_cloud=False);r={"success":True,"message":"自动刷新完成"}
                 elif ac=='sync_login':r=s._0m._0xscl()
                 elif ac=='login_info':i=s._0m._0xgcli();r={"success":True,"info":i}
