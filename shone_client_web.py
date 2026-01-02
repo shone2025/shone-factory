@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.1'
+VERSION = '3.4.9.2'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -228,7 +228,7 @@ def _0xGCF():
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/config",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -248,7 +248,7 @@ def _0xGVR():
         no_proxy_handler=urllib.request.ProxyHandler({})
         opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/version",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json'
         },method='GET')
         with opener.open(rq,timeout=15)as rs:
@@ -344,7 +344,7 @@ def _0xRRF(sfkey_id):
         ts=str(int(time.time()))
         data=json.dumps({"sfkey_id":sfkey_id[:35]}).encode('utf-8')
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/refresh-request",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
@@ -363,7 +363,7 @@ def _0xGBA(sfkey_id):
         ts=str(int(time.time()))
         qid=sfkey_id.strip()[:35]
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/balance/{qid}",headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -385,7 +385,7 @@ def _0xCQ(sfkey_id):
         url=f"{_CLOUD_URL}/api/fast-query/{qid}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -415,7 +415,7 @@ def _0xCQU(user_id):
         url=f"{_CLOUD_URL}/api/query-by-uid/{user_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -442,7 +442,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/account/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -463,7 +463,7 @@ def _0xCQC(sfkey_id):
         url=f"{_CLOUD_URL}/api/credentials/{sfkey_id}"
         ts=str(int(time.time()))
         rq=urllib.request.Request(url,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Accept':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -492,7 +492,7 @@ def _0xUTC(sfkey_id,at,rt,ex,retry=2):
             data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"exp":ex}).encode('utf-8')
             ts=str(int(time.time()))
             rq=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={
-                'User-Agent':'ShoneFactory-Client/3.4.9.1',
+                'User-Agent':'ShoneFactory-Client/3.4.9.2',
                 'Content-Type':'application/json',
                 'X-Client-Key':_CLIENT_KEY,
                 'X-Timestamp':ts
@@ -546,7 +546,7 @@ def _0xRCS(sfkey_id, remaining_minutes, client_online=True, is_active=False, usa
         }).encode('utf-8')
         ts=str(int(time.time()))
         rq=urllib.request.Request(f"{_CLOUD_URL}/api/client-status",data=data,headers={
-            'User-Agent':'ShoneFactory-Client/3.4.9.1',
+            'User-Agent':'ShoneFactory-Client/3.4.9.2',
             'Content-Type':'application/json',
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':ts
@@ -1266,14 +1266,16 @@ class _0xTM:
         al=[]
         for i,a in enumerate(po['accounts'],1):
             ex=a.get('exp',0);ki=a.get('key_id',f'shonetokenkey{i:03d}')
-            # v3.4.9.1: 改进当前账号匹配逻辑 - 支持access_token/refresh_token/邮箱匹配
+            # v3.4.9.2: 改进当前账号匹配逻辑 - 兼容标准键名和混淆键名
             ic=False
+            a_at=a.get(_S2,'') or a.get('access_token','')  # 兼容两种键名
+            a_rt=a.get(_S3,'') or a.get('refresh_token','')  # 兼容两种键名
             if ct:
                 # 第一优先：匹配 access_token
-                if a.get(_S2,'')==ct:
+                if a_at and a_at==ct:
                     ic=True
                 # 第二优先：匹配 refresh_token（更稳定）
-                elif ct_rt and a.get(_S3,'')==ct_rt:
+                elif ct_rt and a_rt and a_rt==ct_rt:
                     ic=True
                 # 第三优先：匹配邮箱（最稳定的标识符）
                 elif ct_email and a.get('email',''):
@@ -1418,9 +1420,10 @@ class _0xTM:
                 old_at = old_auth.get('access_token','')
                 old_rt = old_auth.get('refresh_token','')
                 if old_at and old_rt:
-                    # 在账号池中查找旧账号
+                    # 在账号池中查找旧账号 - v3.4.9.2: 兼容标准键名和混淆键名
                     for old_acc in po['accounts']:
-                        if old_acc.get(_S2,'') == old_at:
+                        old_acc_at=old_acc.get(_S2,'') or old_acc.get('access_token','')
+                        if old_acc_at == old_at:
                             old_sfkl1 = old_acc.get('sf_key_line1','')
                             if old_sfkl1:
                                 old_exp = old_acc.get('exp',0)
