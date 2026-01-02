@@ -1,0 +1,8 @@
+# 不同步的文件
+dev-rules.md
+GitHub同步办法.md
+*.backup.*
+__pycache__/
+.device_id
+.token_hashes.json
+*.pyc
