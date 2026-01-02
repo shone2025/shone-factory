@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# V3.4.9.4 - ShoneFactory Token Key
 import os,sys,json,base64,platform,webbrowser,urllib.request,urllib.error,ssl,time,hashlib,socket,uuid,zlib,subprocess
 from pathlib import Path
 from datetime import datetime
