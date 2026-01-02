@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.2'
+VERSION = '3.4.9.3'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
