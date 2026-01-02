@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.3'
+VERSION = '3.4.9.4'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -866,7 +866,7 @@ class _0xTM:
 
     def _0xfp(s):
         _0xCHK()
-        if platform.system()=='Windows':return Path(os.environ.get(_S5,''))/_S4[1:]
+        if platform.system()=='Windows':return Path(os.environ.get(_S5,''))/_S4
         return Path.home()/_S4
 
     def _0xdj(s,t):
@@ -3850,7 +3850,8 @@ _H1='''<!DOCTYPE html>
             if (pendingAddContent && !isRetryingAdd) {
                 isRetryingAdd = true;
                 showToast(t('retryingAdd'), 'info');
-                showLoading(t('loadingKey'), 20000);
+                // v3.4.9.4: 增加超时时间到45秒
+                showLoading(t('loadingKey'), 45000);
                 const result = await api('add', { content: pendingAddContent });
                 hideLoading();
                 if (result.success) {
@@ -3876,7 +3877,8 @@ _H1='''<!DOCTYPE html>
         async function addToken() {
             const content = document.getElementById('tokenInput').value.trim();
             if (!content) { showToast(t('pasteKeyFirst'), 'error'); return; }
-            showLoading(t('loadingKey'), 20000);
+            // v3.4.9.4: 增加超时时间到45秒（导入+额度查询需要较长时间）
+            showLoading(t('loadingKey'), 45000);
             const result = await api('add', { content });
             hideLoading();
             if (result.success) {
