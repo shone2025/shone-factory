@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.5.0.3'
+VERSION = '3.5.0.4'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -3811,12 +3811,12 @@ _H1='''<!DOCTYPE html>
         }
         function clearInput() { document.getElementById('tokenInput').value = ''; }
         
-        // 服务状态检测和自动重连 - v3.4.9.9: 添加明显的后台断开警告
+        // 服务状态检测和自动重连 - v3.5.0.4: 增加容错，避免额度查询时误报
         let serverOnline = true;
         let reconnectAttempts = 0;
         let consecutiveFailures = 0;
         const maxReconnectAttempts = 100;
-        const failureThreshold = 3;
+        const failureThreshold = 5;   // v3.5.0.4: 增加到 5 次
         
         // v3.4.9.9: 创建后台断开警告横幅
         function showBackendWarning() {
@@ -3846,7 +3846,7 @@ _H1='''<!DOCTYPE html>
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'ping' }),
-                    signal: AbortSignal.timeout(3000)
+                    signal: AbortSignal.timeout(15000)  // v3.5.0.4: 增加到 15 秒，避免额度查询时超时
                 });
                 if (response.ok) {
                     consecutiveFailures = 0;
@@ -3873,7 +3873,7 @@ _H1='''<!DOCTYPE html>
             return false;
         }
         
-        // 每5秒检测一次服务状态
+        // 每10秒检测一次服务状态 (v3.5.0.4: 从5秒增加到 10秒)
         setInterval(async () => {
             if (!serverOnline) {
                 reconnectAttempts++;
@@ -3883,7 +3883,7 @@ _H1='''<!DOCTYPE html>
             } else {
                 await checkServerStatus();
             }
-        }, 5000);
+        }, 10000);
         
         let pendingAddContent = null;  // 存储待添加的SF-Key内容
         let isRetryingAdd = false;  // 是否正在重试添加
