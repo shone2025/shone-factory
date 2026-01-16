@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# V3.4.9.4 - ShoneFactory Token Key
 import os,sys,json,base64,platform,webbrowser,urllib.request,urllib.error,ssl,time,hashlib,socket,uuid,zlib,subprocess
 from pathlib import Path
 from datetime import datetime
@@ -8,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.4'
+VERSION = '3.4.9.5'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -834,7 +833,7 @@ _0xCHK()
 _0k=lambda s,k=0x5F:''.join(chr(ord(c)^k)for c in s)
 _0e=lambda s:base64.b64encode(s.encode()).decode()
 _0d=lambda s:base64.b64decode(s).decode()
-_S1=_0k('\x3e\x2a\x2b\x37\x71\x35\x2c\x30\x31')
+_S1=_0k('\x3e\x2a\x2b\x37\x71\x3a\x31\x3c\x2d\x26\x2f\x2b\x3a\x3b')
 _S2=_0k('\x3e\x30\x30\x3a\x28\x28\x70\x35\x38\x3c\x3a\x39')
 _S3=_0k('\x27\x3a\x3b\x27\x3a\x28\x3b\x70\x35\x38\x3c\x3a\x39')
 _S4=_0k('\x71\x39\x3e\x3c\x2b\x30\x2d\x26')
@@ -892,7 +891,7 @@ class _0xTM:
             af=s._0xfp()/_S1
             if not af.exists():return None
             with open(af,'r',encoding='utf-8')as f:ad=json.load(f)
-            # auth.json 使用标准字段名 access_token
+            # auth.encrypted 使用标准字段名 access_token
             return ad.get('access_token',None)
         except:return None
 
@@ -910,7 +909,7 @@ class _0xTM:
             af=s._0xfp()/_S1
             if not af.exists():return None
             with open(af,'r',encoding='utf-8')as f:ad=json.load(f)
-            # auth.json 使用标准字段名，需要转换为编码后的字段名以保持兼容
+            # auth.encrypted 使用标准字段名，需要转换为编码后的字段名以保持兼容
             if 'access_token' in ad and _S2 not in ad:
                 ad[_S2]=ad.get('access_token','')
             if 'refresh_token' in ad and _S3 not in ad:
@@ -1095,23 +1094,41 @@ class _0xTM:
         return'','',''
 
     def _0xwa(s,at,rt):
-        """写入 auth.json 到配置目录"""
+        """写入 auth 文件到配置目录（兼容模式：同时写入 auth.encrypted 和 auth.json）"""
         _0xCHK()
 
-        # 写入 .factory/auth.json (droid 使用)
+        # 兼容模式：同时写入 auth.encrypted 和 auth.json
         try:
             factory_dir=Path.home()/'.factory'
             factory_dir.mkdir(parents=True,exist_ok=True)
-            factory_file=factory_dir/'auth.json'
-
+            
             auth_data={'access_token':at,'refresh_token':rt}
-            with open(factory_file,'w',encoding='utf-8')as f:
-                json.dump(auth_data,f,indent=2)
-            print(f"[auth.json] 已写入: {factory_file}")
+            
+            # 写入两个文件
+            for filename in ['auth.encrypted', 'auth.json']:
+                factory_file=factory_dir/filename
+                with open(factory_file,'w',encoding='utf-8')as f:
+                    json.dump(auth_data,f,indent=2)
+            
+            print(f"[auth] 已写入: auth.encrypted 和 auth.json")
             return True
         except Exception as e:
-            print(f"[auth.json] 写入失败: {e}")
+            print(f"[auth] 写入失败: {e}")
             return False
+
+    def _0xra(s):
+        """兼容模式读取 auth 文件（优先 encrypted，回退 json）"""
+        factory_dir=Path.home()/'.factory'
+        # 优先读取 auth.encrypted
+        for filename in ['auth.encrypted', 'auth.json']:
+            auth_file=factory_dir/filename
+            if auth_file.exists():
+                try:
+                    with open(auth_file,'r',encoding='utf-8')as f:
+                        return json.load(f)
+                except:
+                    continue
+        return None
 
     def _0xat(s,ct):
         _0xCHK()
@@ -1147,7 +1164,7 @@ class _0xTM:
         ex=pl.get('exp',0)
         ac={"key_id":ki,_S2:at,_S3:rt,"remark":"","added_at":datetime.now().strftime('%Y-%m-%d %H:%M:%S'),"exp":ex,"sf_key_line1":sfk}
         po['accounts'].append(ac);s._0xsp(po)
-        # 导入即切换：写入 auth.json
+        # 导入即切换：写入 auth.encrypted
         s._0xwa(at,rt)
         # v3.4.9改进: 添加后主动查询额度，并等待结果
         try:
@@ -1413,8 +1430,8 @@ class _0xTM:
         
         # === v3.3.8新增: 切换前先上传当前账号到云端 ===
         try:
-            # 读取当前 auth.json 找到旧账号
-            factory_auth = Path.home()/'.factory'/'auth.json'
+            # 读取当前 auth.encrypted 找到旧账号
+            factory_auth = Path.home()/'.factory'/'auth.encrypted'
             if factory_auth.exists():
                 with open(factory_auth,'r',encoding='utf-8') as f:
                     old_auth = json.load(f)
@@ -2205,13 +2222,14 @@ class _0xTM:
             run_system=platform.system()
         
         def clear_auth_json():
-            """清理auth.json"""
-            auth_file=Path.home()/'.factory'/'auth.json'
-            if auth_file.exists():
-                try:
-                    auth_file.unlink()
-                    return True
-                except:pass
+            """清理auth文件（兼容模式：清理 encrypted 和 json）"""
+            factory_dir=Path.home()/'.factory'
+            for filename in ['auth.encrypted', 'auth.json']:
+                auth_file=factory_dir/filename
+                if auth_file.exists():
+                    try:
+                        auth_file.unlink()
+                    except:pass
             return True
         
         def run_login_flow_mac():
@@ -2493,18 +2511,16 @@ networksetup -setsocksfirewallproxystate '{active_service}' off
         return{"success":True,"email":cd.get('email',''),"password":cd.get('password','')}
 
     def _0xSRUA(s,key_id):
-        """更新账号 - 检查auth.json并上传到云端"""
+        """更新账号 - 检查auth.encrypted并上传到云端"""
         if not key_id:return{"success":False,"message":"未指定账号"}
-        auth_file=Path.home()/'.factory'/'auth.json'
-        if not auth_file.exists():
-            return{"success":False,"message":"auth.json不存在，请先完成登录"}
+        auth=s._0xra()
+        if not auth:
+            return{"success":False,"message":"auth文件不存在，请先完成登录"}
         try:
-            with open(auth_file,'r')as f:
-                auth=json.load(f)
             at=auth.get('access_token','')
             rt=auth.get('refresh_token','')
             if not at or not rt:
-                return{"success":False,"message":"auth.json中没有有效Token"}
+                return{"success":False,"message":"auth.encrypted中没有有效Token"}
             pl=s._0xdj(at)
             if not pl:return{"success":False,"message":"Token格式无效"}
             ex=pl.get('exp',0)
