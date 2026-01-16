@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.5.0.2'
+VERSION = '3.5.0.3'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -83,12 +83,14 @@ def _register_client():
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        no_proxy_handler = urllib.request.ProxyHandler({})
+        opener = urllib.request.build_opener(no_proxy_handler, urllib.request.HTTPSHandler(context=ctx))
         
         data = json.dumps({
             'device_id': device_id,
             'hostname': socket.gethostname(),
             'system': platform.system(),
-            'version': '3.4.8'
+            'version': VERSION
         }).encode('utf-8')
         
         req = urllib.request.Request(
@@ -96,12 +98,13 @@ def _register_client():
             data=data,
             headers={
                 'Content-Type': 'application/json',
-                'X-Client-Key': _CLIENT_KEY
+                'X-Client-Key': _CLIENT_KEY,
+                'X-Timestamp': str(int(time.time()))
             },
             method='POST'
         )
         
-        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+        with opener.open(req, timeout=15) as resp:
             return json.loads(resp.read().decode('utf-8'))
     except Exception as e:
         print(f"客户端注册失败: {e}")
