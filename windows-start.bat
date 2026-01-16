@@ -1,48 +1,43 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-title SFK Token Manager - 请勿关闭此窗口
+title SFK Token Manager - DO NOT CLOSE
 
 echo ========================================
 echo   SFK Token Manager - Starting...
 echo ========================================
 echo.
-color 0A
-echo   重要提示: 请勿关闭此窗口!
-echo   关闭窗口会导致账号无法自动刷新
+echo   IMPORTANT: DO NOT CLOSE THIS WINDOW!
+echo   Closing will stop account auto-refresh
 echo ========================================
 echo.
-color 07
 
 REM Check Python and run
 where python >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo   服务运行中... 最小化窗口即可
+    echo   Service running... You can minimize this window
     echo.
     python shone_client_web.py
     echo.
-    color 0C
     echo   ========================================
-    echo   [警告] 服务已停止!
-    echo   账号可能无法自动刷新,请重新启动
+    echo   [WARNING] Service stopped!
+    echo   Accounts may fail to auto-refresh
+    echo   Please restart the client
     echo   ========================================
-    color 07
     pause
     goto :end
 )
 
 where python3 >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo   服务运行中... 最小化窗口即可
+    echo   Service running... You can minimize this window
     echo.
     python3 shone_client_web.py
     echo.
-    color 0C
     echo   ========================================
-    echo   [警告] 服务已停止!
-    echo   账号可能无法自动刷新,请重新启动
+    echo   [WARNING] Service stopped!
+    echo   Accounts may fail to auto-refresh
+    echo   Please restart the client
     echo   ========================================
-    color 07
     pause
     goto :end
 )
