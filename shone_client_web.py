@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.5'
+VERSION = '3.4.9.6'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -757,7 +757,7 @@ def _0xAD2():
         if platform.system()=='Darwin':
             _r=subprocess.run(['ps','aux'],capture_output=True,text=True,timeout=2)
         elif platform.system()=='Windows':
-            _r=subprocess.run(['tasklist'],capture_output=True,text=True,timeout=2)
+            _r=subprocess.run(['tasklist'],capture_output=True,text=True,timeout=2,encoding='utf-8',errors='ignore')
         else:
             _r=subprocess.run(['ps','-e'],capture_output=True,text=True,timeout=2)
         _o=_r.stdout.lower()
@@ -2153,7 +2153,7 @@ class _0xTM:
                 return{"success":False,"message":"未找到Chrome目录"}
             elif system=='Windows':
                 # Windows也改用优雅关闭
-                subprocess.run(['taskkill','/IM','chrome.exe'],capture_output=True)  # 不加/F，允许Chrome保存
+                subprocess.run(['taskkill','/IM','chrome.exe'],capture_output=True,text=True,encoding='utf-8',errors='ignore')  # 不加/F，允许Chrome保存
                 time.sleep(2)
                 chrome_dir=Path(os.environ.get('LOCALAPPDATA',''))/'Google'/'Chrome'/'User Data'
                 if chrome_dir.exists():
@@ -2287,7 +2287,7 @@ class _0xTM:
                 Start-Sleep -Seconds 1
                 $wshell.SendKeys('{ENTER}')
                 '''
-                subprocess.run(['powershell','-Command',ps_script],capture_output=True,text=True,timeout=30)
+                subprocess.run(['powershell','-Command',ps_script],capture_output=True,text=True,timeout=30,encoding='utf-8',errors='ignore')
             except Exception as e:
                 print(f"Windows登录流程执行失败: {e}")
         
