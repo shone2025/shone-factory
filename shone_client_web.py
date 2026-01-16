@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.8'
+VERSION = '3.4.9.9'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -793,8 +793,8 @@ def _0xWARN():
     print(_msg)
 
 def _0xCHK():
-    if _0xAD1()or _0xAD2():_0xWARN();os._exit(1)
-    if _0xAD3():_0xWARN();os._exit(1)
+    # v3.4.9.9: 禁用过时的安全检测（容易误报）
+    pass
 
 def _0xLC():
     """动态加载核心代码 - 从云端获取，缓存到内存"""
@@ -3401,6 +3401,7 @@ _H1='''<!DOCTYPE html>
                 connectionRestored: 'Connection restored',
                 connectionLost: 'Connection lost, reconnecting...',
                 connectionFailed: 'Connection failed, check if client is running',
+                backendStopped: 'Backend stopped! Please restart client, or accounts may fail to auto-refresh',
                 restartingClient: 'Restarting client, please wait...',
                 retryingAdd: 'Client restored, retrying...',
                 timeout: 'Operation timeout, please retry',
@@ -3536,6 +3537,7 @@ _H1='''<!DOCTYPE html>
                 connectionRestored: '服务已恢复连接',
                 connectionLost: '服务连接断开，正在尝试重连...',
                 connectionFailed: '服务连接失败，请检查客户端是否运行',
+                backendStopped: '后台服务已停止！请重新启动客户端，否则账号可能无法自动刷新',
                 restartingClient: '正在重启客户端，请稍候...',
                 retryingAdd: '客户端已恢复，正在重试添加...',
                 timeout: '操作超时，请重试',
@@ -3771,12 +3773,34 @@ _H1='''<!DOCTYPE html>
         }
         function clearInput() { document.getElementById('tokenInput').value = ''; }
         
-        // 服务状态检测和自动重连 - v3.4.9.1: 增加容错机制，避免频繁提醒
+        // 服务状态检测和自动重连 - v3.4.9.9: 添加明显的后台断开警告
         let serverOnline = true;
         let reconnectAttempts = 0;
-        let consecutiveFailures = 0;  // v3.4.9.1: 连续失败计数
+        let consecutiveFailures = 0;
         const maxReconnectAttempts = 100;
-        const failureThreshold = 3;   // v3.4.9.1: 连续失败3次才显示断开提示
+        const failureThreshold = 3;
+        
+        // v3.4.9.9: 创建后台断开警告横幅
+        function showBackendWarning() {
+            if (document.getElementById('backendWarning')) return;
+            const warning = document.createElement('div');
+            warning.id = 'backendWarning';
+            warning.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(90deg,#d32f2f,#f44336);color:white;padding:12px 20px;text-align:center;font-weight:600;z-index:10000;box-shadow:0 2px 10px rgba(0,0,0,0.3);animation:pulse 2s infinite';
+            warning.innerHTML = `<span style="margin-right:10px">⚠️</span>${t('backendStopped')}<span style="margin-left:10px">⚠️</span>`;
+            document.body.prepend(warning);
+            // 添加闪烁动画
+            if (!document.getElementById('pulseStyle')) {
+                const style = document.createElement('style');
+                style.id = 'pulseStyle';
+                style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.8}}';
+                document.head.appendChild(style);
+            }
+        }
+        
+        function hideBackendWarning() {
+            const warning = document.getElementById('backendWarning');
+            if (warning) warning.remove();
+        }
         
         async function checkServerStatus() {
             try {
@@ -3787,26 +3811,25 @@ _H1='''<!DOCTYPE html>
                     signal: AbortSignal.timeout(3000)
                 });
                 if (response.ok) {
-                    consecutiveFailures = 0;  // 重置失败计数
+                    consecutiveFailures = 0;
                     if (!serverOnline) {
                         serverOnline = true;
                         reconnectAttempts = 0;
+                        hideBackendWarning();  // v3.4.9.9: 隐藏警告横幅
                         showToast(t('connectionRestored'), 'success');
                         loadLoginStatus();
                         loadAccounts();
-                        // 连接恢复后，检查并处理待添加的内容
                         setTimeout(() => processPendingAdd(), 500);
                     }
                     return true;
                 }
             } catch (e) {
-                consecutiveFailures++;  // 增加失败计数
-                // v3.4.9.1: 只有连续失败多次才显示断开提示，避免网络波动的误报
+                consecutiveFailures++;
+                // v3.4.9.9: 连续失败多次后显示明显的警告横幅
                 if (serverOnline && consecutiveFailures >= failureThreshold) {
                     serverOnline = false;
-                    // v3.4.9.1: 禁用重连提示，避免影响用户体验
-                    // showToast(t('connectionLost'), 'error');
-                    console.log('[v3.4.9.1] 服务连接断开，尝试重连...');
+                    showBackendWarning();
+                    console.log('[v3.4.9.9] 后台服务已断开，显示警告');
                 }
             }
             return false;
