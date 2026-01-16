@@ -260,47 +260,82 @@ def _0xGVR():
         return {"success":False,"message":f"检查失败: {e}"}
 
 def _0xAU():
-    """从云端下载并更新客户端主文件"""
-    try:
-        ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
-        no_proxy_handler=urllib.request.ProxyHandler({})
-        opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
-        rq=urllib.request.Request(f"{_CLOUD_URL}/api/download-client",headers={
-            'User-Agent':f'ShoneFactory-Client/{VERSION}',
-            'Accept':'application/json',
-            'X-Client-Key':_CLIENT_KEY,
-            'X-Timestamp':str(int(time.time()))
-        },method='GET')
-        with opener.open(rq,timeout=90)as rs:  # 增加超时时间到 90 秒
-            r=json.loads(rs.read().decode('utf-8'))
-            if r.get('success') and r.get('code'):
-                # 获取当前脚本路径
+    """从云端下载并更新客户端主文件 - v3.4.9.9: 增加进度显示+备用源"""
+    # 定义下载源（主源 + 备用源）
+    download_sources = [
+        (f"{_CLOUD_URL}/api/download-client", 'cloud'),
+        ('https://raw.githubusercontent.com/shone2025/shone-factory/main/shone_client_web.py', 'github_raw')
+    ]
+    
+    for url, source_type in download_sources:
+        try:
+            ctx=ssl.create_default_context();ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+            no_proxy_handler=urllib.request.ProxyHandler({})
+            opener=urllib.request.build_opener(no_proxy_handler,urllib.request.HTTPSHandler(context=ctx))
+            
+            headers = {'User-Agent':f'ShoneFactory-Client/{VERSION}','Accept':'application/json'}
+            if source_type == 'cloud':
+                headers['X-Client-Key'] = _CLIENT_KEY
+                headers['X-Timestamp'] = str(int(time.time()))
+            
+            rq=urllib.request.Request(url,headers=headers,method='GET')
+            print(f"  ⬇️  正在从{'云端' if source_type=='cloud' else 'GitHub'}下载...", end='', flush=True)
+            start_time=time.time()
+            
+            with opener.open(rq,timeout=60)as rs:  # 单源超时60秒
+                data=b''
+                chunk_size=8192
+                total_read=0
+                while True:
+                    chunk=rs.read(chunk_size)
+                    if not chunk:break
+                    data+=chunk
+                    total_read+=len(chunk)
+                    if total_read % 51200 < chunk_size:
+                        elapsed=time.time()-start_time
+                        speed=total_read/1024/elapsed if elapsed>0 else 0
+                        print(f"\r  ⬇️  下载中... {total_read//1024}KB ({speed:.1f}KB/s)", end='', flush=True)
+                
+                elapsed=time.time()-start_time
+                speed=total_read/1024/elapsed if elapsed>0 else 0
+                print(f"\r  ✅ 下载完成: {total_read//1024}KB ({elapsed:.1f}秒, {speed:.1f}KB/s)    ")
+                
+                # 解析下载内容
+                if source_type == 'cloud':
+                    r=json.loads(data.decode('utf-8'))
+                    if r.get('success') and r.get('code'):
+                        new_code = r.get('code')
+                        version = r.get('version', 'unknown')
+                    else:
+                        print(f"  ⚠️ 云端返回错误: {r.get('message','未知')}")
+                        continue  # 尝试备用源
+                else:
+                    # GitHub raw 直接返回代码
+                    new_code = data.decode('utf-8')
+                    # 从代码中提取版本号
+                    vm = re.search(r"VERSION\s*=\s*['\"]([\d.]+)['\"]", new_code)
+                    version = vm.group(1) if vm else 'unknown'
+                
+                # 写入文件
                 current_file=Path(__file__).resolve()
                 backup_file=current_file.with_suffix('.py.bak')
-                
-                # 备份当前文件
                 if current_file.exists():
                     import shutil
-                    if backup_file.exists():
-                        backup_file.unlink()
+                    if backup_file.exists():backup_file.unlink()
                     shutil.copy(current_file, backup_file)
-                
-                # 写入新文件
                 with open(current_file,'w',encoding='utf-8')as f:
-                    f.write(r.get('code'))
+                    f.write(new_code)
                 
-                return {
-                    "success":True,
-                    "message":f"更新成功! 新版本: {r.get('version','unknown')}",
-                    "version":r.get('version'),
-                    "need_restart":True
-                }
-            else:
-                return {"success":False,"message":r.get('message','下载失败')}
-    except urllib.error.URLError as e:
-        return {"success":False,"message":f"网络错误: {e.reason}"}
-    except Exception as e:
-        return {"success":False,"message":f"更新失败: {e}"}
+                return {"success":True,"message":f"更新成功! 新版本: {version}","version":version,"need_restart":True}
+        
+        except urllib.error.URLError as e:
+            print(f"\n  ⚠️ {source_type}下载失败: {e.reason}")
+            continue
+        except Exception as e:
+            print(f"\n  ⚠️ {source_type}下载异常: {e}")
+            continue
+    
+    return {"success":False,"message":"所有下载源均失败，请检查网络"}
 
 def _0xCAU():
     """检查并自动更新（启动时调用）"""
@@ -4855,8 +4890,20 @@ def _check_and_auto_update():
             'X-Timestamp': ts
         }, method='GET')
         
-        with opener.open(rq, timeout=30) as rs:
-            r = json.loads(rs.read().decode('utf-8'))
+        with opener.open(rq, timeout=180) as rs:  # v3.4.9.9: 增加超时时间到 180 秒
+            # 读取数据并显示进度
+            data = b''
+            chunk_size = 8192
+            total_read = 0
+            while True:
+                chunk = rs.read(chunk_size)
+                if not chunk: break
+                data += chunk
+                total_read += len(chunk)
+                if total_read % 51200 < chunk_size:
+                    print(f"\r  ⬇️  下载中... {total_read//1024}KB", end='', flush=True)
+            print(f"\r  ✅ 下载完成: {total_read//1024}KB              ")
+            r = json.loads(data.decode('utf-8'))
             if r.get('success') and r.get('code'):
                 new_code = r['code']
                 current_file = Path(__file__)
