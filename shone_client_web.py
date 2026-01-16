@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.5.0.1'
+VERSION = '3.5.0.2'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -1042,7 +1042,7 @@ class _0xTM:
                 # 上传到云端
                 import urllib.request
                 data=json.dumps({"sfkey_id":sfkey_id,"access_token":at,"refresh_token":rt,"email":em,"exp":ex,"user_id":user_id}).encode('utf-8')
-                req=urllib.request.Request(f"{_CLOUD_URL}/api/update",data=data,headers={'Content-Type':'application/json','X-API-Key':_CLIENT_KEY},method='POST')
+                req=urllib.request.Request(f"{_CLOUD_URL}/api/update-token",data=data,headers={'Content-Type':'application/json','X-Client-Key':_CLIENT_KEY,'X-Timestamp':str(int(time.time()))},method='POST')
                 with urllib.request.urlopen(req,timeout=15)as resp:
                     result=json.loads(resp.read().decode('utf-8'))
                     if result.get('success'):
