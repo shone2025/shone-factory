@@ -7,7 +7,7 @@ from http.server import HTTPServer,BaseHTTPRequestHandler
 from urllib.parse import parse_qs,urlparse,urlencode
 import threading,re
 
-VERSION = '3.4.9.6'
+VERSION = '3.4.9.7'
 
 # 核心函数占位符 - 运行时从云端加载
 def decode_sf_key(s):return"",""
@@ -271,7 +271,7 @@ def _0xAU():
             'X-Client-Key':_CLIENT_KEY,
             'X-Timestamp':str(int(time.time()))
         },method='GET')
-        with opener.open(rq,timeout=30)as rs:
+        with opener.open(rq,timeout=90)as rs:  # 增加超时时间到 90 秒
             r=json.loads(rs.read().decode('utf-8'))
             if r.get('success') and r.get('code'):
                 # 获取当前脚本路径
